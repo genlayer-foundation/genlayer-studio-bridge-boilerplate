@@ -1,0 +1,44 @@
+# Dependency directories
+node_modules/
+jspm_packages/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# General
+.DS_Store
+Thumbs.db
+*.log
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts (general)
+dist/
+build/
+coverage/
+coverage.json
+
+# Hardhat (global catch-all if not caught by sub-gitignores)
+artifacts/
+cache/
+deployments/
+typechain-types/
+typechain/
+

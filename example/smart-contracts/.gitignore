@@ -1,0 +1,16 @@
+artifacts/
+cache/
+node_modules/
+typechain-types/
+typechain/
+coverage/
+coverage.json
+
+# Environment
+.env
+
+# Hardhat Ignition
+ignition/deployments/chain-31337
+
+deployments/
+

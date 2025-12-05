@@ -1,0 +1,19 @@
+{
+  "name": "bridge-example-smart-contracts",
+  "version": "1.0.0",
+  "description": "Example smart contracts for GenLayer Bridge (bidirectional)",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:base-sepolia": "hardhat compile && hardhat run scripts/deploy-string-receiver.ts --network baseSepoliaTestnet",
+    "deploy:string-sender-evm": "hardhat compile && hardhat run scripts/deploy-string-sender-evm.ts --network baseSepoliaTestnet"
+  },
+  "dependencies": {
+    "@layerzerolabs/lz-v2-utilities": "^3.0.148",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.3",
+    "typescript": "^5.4.5"
+  }
+}
