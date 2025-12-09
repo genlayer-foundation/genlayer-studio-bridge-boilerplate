@@ -47,7 +47,7 @@ An EVM contract sends data to GenLayer (Inbox), which must be claimed by an Inte
 
 ### 1. Prerequisites
 - GenLayer `BridgeReceiver` (Inbox) deployed.
-- zkSync `BridgeReceiver` (Hub) deployed.
+- ZKsync `BridgeReceiver` (Hub) deployed.
 - Service relaying EVM → GenLayer.
 
 ### 2. Deploy Contracts
