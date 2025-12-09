@@ -1,149 +1,209 @@
-# GenLayer Bridge
+# GenLayer Bridge Boilerplate
 
-Bidirectional cross-chain messaging between GenLayer and EVM chains via LayerZero V2.
+**Connect your blockchain to the Resolution Layer.**
 
-## Overview
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Status](https://img.shields.io/badge/status-beta-orange.svg)
 
-- **GenLayer → EVM**: Send messages from GenLayer intelligent contracts to EVM chains (Base, Ethereum, etc.)
-- **EVM → GenLayer**: Send messages from EVM smart contracts to GenLayer intelligent contracts
+This boilerplate provides the complete infrastructure to connect **GenLayer Intelligent Contracts** with **EVM** chains (Base, Ethereum, etc.) via **LayerZero V2**. It enables any blockchain to offload complex, non-deterministic work—AI reasoning, web access, data verification—to GenLayer and receive verified results.
 
-The bridge uses **LayerZero V2** for transport and **zkSync** as the hub chain for both directions.
+## 📚 Table of Contents
 
-## Architecture
+- [The Resolution Layer](#-the-resolution-layer)
+- [Architecture](#-architecture)
+  - [Message Flow](#message-flow)
+- [Repository Structure](#-repository-structure)
+- [Key Contracts](#-key-contracts)
+- [Prerequisites](#-prerequisites)
+- [Deployment Guide](#-deployment-guide)
+  - [1. Installation](#1-installation)
+  - [2. Configuration](#2-configuration)
+  - [3. Deploy EVM Infrastructure](#3-deploy-evm-infrastructure)
+  - [4. Link EVM Contracts](#4-link-evm-contracts)
+  - [5. Deploy GenLayer "Brain"](#5-deploy-genlayer-brain)
+  - [6. Activate the Resolution Layer](#6-activate-the-resolution-layer)
+- [Development & Debugging](#-development--debugging)
+- [Troubleshooting](#-troubleshooting)
+- [License](#-license)
 
+---
+
+## 🌐 The Resolution Layer
+
+Blockchains are powerful but blind. They cannot read news, verify events, or access the web. GenLayer solves this by acting as the **Resolution Layer** for the ecosystem.
+
+- **Your Chain (Backbone)**: Holds liquidity, users, and core logic.
+- **GenLayer (Brain)**: Handles intelligence, web data, and AI processing.
+
+This bridge connects the two, allowing you to build "Intelligent dApps" without migrating your users or liquidity.
+
+## 🏗 Architecture
+
+The bridge implements a **Hub-and-Spoke** model with **zkSync** serving as the central hub for GenLayer's interactions with the wider EVM ecosystem via LayerZero.
+
+```mermaid
+graph TD
+    subgraph "The World"
+        Web[Web Data / APIs]
+        AI[LLM Reasoning]
+    end
+
+    subgraph "GenLayer (The Brain)"
+        IC[Intelligent Contract]
+        Inbox[Inbox Contract]
+    end
+
+    subgraph "Transport"
+        Service[Relay Service]
+        LZ[LayerZero V2]
+    end
+
+    subgraph "EVM Chain (The Backbone)"
+        dApp[Your dApp]
+    end
+
+    dApp -->|1. Request Resolution| LZ
+    LZ -->|2. Relay Message| Service
+    Service -->|3. Deliver to Inbox| Inbox
+    Inbox -.->|4. PULL: Process Request| IC
+    IC -->|5. Consult Reality| Web
+    IC -->|6. AI Consensus| AI
+    IC -->|7. Send Result| Service
+    Service -->|8. Relay Result| LZ
+    LZ -->|9. Callback| dApp
 ```
-                          ┌─────────────────────────────┐
-                          │       zkSync (Hub)          │
-                          │  ┌───────────────────────┐  │
-     GenLayer ◄──────────►│  │ BridgeForwarder.sol   │  │◄──────────► Base
-                          │  │ BridgeReceiver.sol    │  │
-                          │  └───────────────────────┘  │
-                          └─────────────────────────────┘
-                                        ▲
-                                   LayerZero V2
-                                        ▼
-                          ┌─────────────────────────────┐
-                          │     Other EVM Chains        │
-                          └─────────────────────────────┘
-```
 
-### GenLayer → EVM Flow
+### Message Flow
 
-```
-GenLayer BridgeSender.py → Service polls → zkSync BridgeForwarder → LayerZero → Target EVM
-```
+#### GenLayer → EVM
+1.  **Source IC** calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`.
+2.  **Service** polls `get_message_hashes()` and `get_message()` on GenLayer.
+3.  **Service** calls `BridgeForwarder.callRemoteArbitrary()` on zkSync with LayerZero fee.
+4.  **LayerZero** delivers to `BridgeReceiver` on destination chain.
+5.  **BridgeReceiver** dispatches to target contract via `processBridgeMessage()`.
 
-1. IC calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`
-2. Service polls for new messages and relays via `BridgeForwarder.callRemoteArbitrary()`
-3. LayerZero delivers to `BridgeReceiver` on destination chain
-4. `BridgeReceiver` calls `target.processBridgeMessage(srcChainId, srcSender, message)`
+#### EVM → GenLayer
+1.  **Source Contract** calls `BridgeSender.sendToGenLayer(targetContract, data, options)`.
+2.  **LayerZero** delivers to `BridgeReceiver.sol` on zkSync.
+3.  **BridgeReceiver** stores message (not just event) for polling.
+4.  **Service** polls `getPendingGenLayerMessages()` on zkSync.
+5.  **Service** calls `BridgeReceiver.receive_message()` on GenLayer.
+6.  **Service** calls `markMessageRelayed()` on zkSync.
+7.  **Target IC** calls `BridgeReceiver.claim_all_messages()` to receive (PULL model).
 
-### EVM → GenLayer Flow
+## 📂 Repository Structure
 
-```
-EVM BridgeSender.sol → LayerZero → zkSync BridgeReceiver → Service polls → GenLayer BridgeReceiver.py
-```
+This is a monorepo containing all components of the bridge:
 
-1. Contract calls `BridgeSender.sendToGenLayer(targetContract, data, options)`
-2. LayerZero delivers to zkSync `BridgeReceiver` which stores the message
-3. Service polls and relays to GenLayer `BridgeReceiver`
-4. Target IC calls `claim_all_messages()` to receive (PULL model)
+- **/smart-contracts**: Solidity contracts for EVM chains (Hardhat).
+- **/intelligent-contracts**: Python contracts for GenLayer.
+- **/service**: Node.js relay service that polls and relays messages.
+- **/example**: Complete bidirectional example with StringSender/StringReceiver.
 
-## Quick Start
+## 🔑 Key Contracts
+
+| Contract | Chain | Purpose |
+| :--- | :--- | :--- |
+| `BridgeSender.py` | GenLayer | Stores outbound GL→EVM messages |
+| `BridgeReceiver.py` | GenLayer | Receives EVM→GL messages (PULL model) |
+| `BridgeForwarder.sol` | zkSync | Relays GL→EVM via LayerZero |
+| `BridgeReceiver.sol` | zkSync | Stores EVM→GL messages for polling |
+| `BridgeSender.sol` | Base/EVM | Entry point for EVM→GL messages |
+
+## 📋 Prerequisites
+
+To bridge intelligence to your dApp, you need:
+
+- **Node.js**: v18+ & **npm**: v9+
+- **GenLayer Studio Account**: [GenLayer Studio](https://studio.genlayer.com/)
+- **Wallet**: A private key with testnet funds on:
+  - **Base Sepolia** (Example Target Chain)
+  - **zkSync Sepolia** (Hub Chain)
+
+## 🚀 Deployment Guide
+
+Follow these steps to deploy your own instance of the bridge infrastructure.
+
+### 1. Installation
 
 ```bash
-# 1. Install dependencies
-cd smart-contracts && npm install
-cd ../service && npm install
+# 1. Install Smart Contracts dependencies (EVM)
+cd smart-contracts && npm install && cd ..
 
-# 2. Configure environment
-cp smart-contracts/.env.example smart-contracts/.env
-cp service/.env.example service/.env
-
-# 3. Deploy EVM contracts (see Deployment section)
-
-# 4. Deploy GenLayer contracts via Studio (see below)
-
-# 5. Configure contracts and start service
-cd service && npm run build && npm start
+# 2. Install Bridge Service dependencies (Relayer)
+cd service && npm install && cd ..
 ```
 
-## Directory Structure
+### 2. Configuration
 
-```
-bridge/
-├── smart-contracts/           # Solidity contracts (Hardhat)
-│   ├── contracts/
-│   │   ├── BridgeForwarder.sol   # GL→EVM relay on zkSync
-│   │   ├── BridgeReceiver.sol    # Receives LayerZero messages
-│   │   └── BridgeSender.sol      # EVM→GL entry point
-│   └── scripts/
-│       ├── deploy.ts             # Unified deployment
-│       └── configure.ts          # Unified configuration
-├── intelligent-contracts/     # GenLayer Python contracts
-│   ├── BridgeSender.py           # GL→EVM message storage
-│   └── BridgeReceiver.py         # EVM→GL message receiver (PULL)
-├── service/                   # TypeScript relay service
-│   ├── src/relay/
-│   │   ├── GenLayerToEvm.ts
-│   │   └── EvmToGenLayer.ts
-│   └── cli.ts                    # Debug CLI
-└── example/                   # Bidirectional examples
-```
+Create your environment files.
 
-## Configuration
-
-Copy and configure environment files:
-
+**Smart Contracts (.env)**
 ```bash
 cp smart-contracts/.env.example smart-contracts/.env
-cp service/.env.example service/.env
-cp example/.env.example example/.env
+# EDIT: Add your PRIVATE_KEY and RPC URLs
 ```
 
-See each `.env.example` for required variables and descriptions.
+**Service (.env)**
+```bash
+cp service/.env.example service/.env
+# EDIT: Add your PRIVATE_KEY and GENLAYER_RPC_URL (e.g. https://studio.genlayer.com/api/rpc)
+```
 
-## Deployment
+### 3. Deploy EVM Infrastructure
 
-### EVM Contracts
+Deploy the "mailbox" contracts to the EVM chains.
 
 ```bash
 cd smart-contracts
 
-# Deploy BridgeReceiver (destination chains)
+# 1. Deploy Receiver (Target & Hub)
 CONTRACT=receiver npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 CONTRACT=receiver npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
 
-# Deploy BridgeForwarder (zkSync hub)
+# 2. Deploy Forwarder (Hub - zkSync)
 CONTRACT=forwarder npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
 
-# Deploy BridgeSender (EVM→GL source chain)
+# 3. Deploy Sender (Target - Base)
 CONTRACT=sender npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 ```
 
-### Configure Contracts
+### 4. Link EVM Contracts
+
+Configure the trust relationships so messages can flow securely.
 
 ```bash
-# zkSync: Set trusted forwarder and bridge addresses
+# Configure Hub (zkSync)
 ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
 ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
 ACTION=set-bridge-address npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
 
-# Base: Configure BridgeSender and BridgeReceiver
+# Configure Target (Base)
 ACTION=set-sender-receiver npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 ```
 
-### GenLayer Contracts
+### 5. Deploy GenLayer "Brain"
 
-Deploy intelligent contracts via [GenLayer Studio](https://studio.genlayer.com/):
+Deploy the Intelligent Contracts via [GenLayer Studio](https://studio.genlayer.com/):
 
-1. **Connect wallet** - Must match `PRIVATE_KEY` in your .env files
-2. **Deploy BridgeSender.py** - No constructor arguments needed
-3. **Deploy BridgeReceiver.py** - Constructor: `initial_relayer` = your bridge service wallet address
-4. **Save addresses** - Update `service/.env` with deployed contract addresses
+1.  **Deploy `BridgeSender.py`**: The exit point for results returning to EVM.
+    - _No args required._
+2.  **Deploy `BridgeReceiver.py`**: The **Inbox** that holds incoming requests.
+    - _Arg `initial_relayer`: Your service wallet address (from `.env`)._
 
-### Start Bridge Service
+### 6. Activate the Resolution Layer
+
+Update `service/.env` with your new contract addresses:
+
+```env
+BRIDGE_SENDER_ADDRESS=<GenLayer BridgeSender Address>
+BRIDGE_RECEIVER_IC_ADDRESS=<GenLayer BridgeReceiver Address>
+ZKSYNC_BRIDGE_FORWARDER_ADDRESS=<zkSync BridgeForwarder Address>
+ZKSYNC_BRIDGE_RECEIVER_ADDRESS=<zkSync BridgeReceiver Address>
+```
+
+Start the relay:
 
 ```bash
 cd service
@@ -151,111 +211,52 @@ npm run build
 npm start
 ```
 
-## Implementing Target Contracts
+_The service is now polling. Your bridge is live._
 
-### Receiving on EVM (GenLayer → EVM)
+## 🛠 Development & Debugging
 
-```solidity
-import {IGenLayerBridgeReceiver} from "./interfaces/IGenLayerBridgeReceiver.sol";
-
-contract MyReceiver is IGenLayerBridgeReceiver {
-    address public bridgeReceiver;
-
-    modifier onlyBridge() {
-        require(msg.sender == bridgeReceiver, "Only bridge");
-        _;
-    }
-
-    function processBridgeMessage(
-        uint32 srcChainId,
-        address srcSender,
-        bytes calldata message
-    ) external onlyBridge {
-        string memory data = abi.decode(message, (string));
-        // Handle message...
-    }
-}
-```
-
-### Receiving on GenLayer (EVM → GenLayer)
-
-```python
-class MyReceiverIC(gl.Contract):
-    bridge_receiver: Address
-
-    def __init__(self, bridge_receiver: str):
-        self.bridge_receiver = Address(bridge_receiver)
-
-    @gl.public.write
-    def claim_messages(self) -> int:
-        """Call this to receive pending messages"""
-        bridge = gl.get_contract_at(self.bridge_receiver)
-        messages = bridge.call().claim_all_messages(str(gl.contract.address))
-        for msg in messages:
-            self._process(msg.get("data", bytes()))
-        return len(messages)
-
-    def _process(self, data: bytes):
-        decoder = gl.evm.MethodDecoder([str])
-        message = decoder.decode(data)[0]
-        # Handle message...
-```
-
-### Sending from GenLayer
-
-```python
-@gl.public.write
-def send_to_evm(self, message: str):
-    encoder = gl.evm.MethodEncoder("", [str], bool)
-    data = encoder.encode_call([message])[4:]  # Remove selector
-
-    bridge = gl.get_contract_at(self.bridge_sender)
-    bridge.emit().send_message(TARGET_CHAIN_EID, TARGET_CONTRACT, data)
-```
-
-### Sending from EVM
-
-```solidity
-function sendToGenLayer(string calldata message, bytes calldata options) external payable {
-    bytes memory encoded = abi.encode(message);
-    bridgeSender.sendToGenLayer{value: msg.value}(targetContract, encoded, options);
-}
-```
-
-## CLI Debug Tools
+The `service` directory includes a CLI for debugging the bridge state.
 
 ```bash
 cd service
 
-npx ts-node cli.ts check-receiver     # zkSync BridgeReceiver state
-npx ts-node cli.ts check-sender       # Base BridgeSender state
-npx ts-node cli.ts check-forwarder    # zkSync BridgeForwarder state
-npx ts-node cli.ts check-config       # Verify configurations
-npx ts-node cli.ts pending-messages   # Pending EVM→GL messages
-npx ts-node cli.ts debug-tx <hash>    # Debug transaction
+# Check zkSync BridgeReceiver state
+npx ts-node cli.ts check-receiver
+
+# Check Base BridgeSender state
+npx ts-node cli.ts check-sender
+
+# Check zkSync BridgeForwarder state
+npx ts-node cli.ts check-forwarder
+
+# Verify all configurations
+npx ts-node cli.ts check-config
+
+# List pending messages on zkSync
+npx ts-node cli.ts pending-messages
+
+# Debug a specific transaction
+npx ts-node cli.ts debug-tx <hash>
 ```
 
-## LayerZero Reference
+## 🧪 Example: "Hello World"
 
-| Network        | LayerZero EID | Endpoint Address                             |
-| -------------- | ------------- | -------------------------------------------- |
-| zkSync Sepolia | 40305         | `0xe2Ef622A13e71D9Dd2BBd12cd4b27e1516FA8a09` |
-| Base Sepolia   | 40245         | `0x6EDCE65403992e310A62460808c4b910D972f10f` |
-| zkSync Mainnet | 30165         | See LayerZero docs                           |
-| Base Mainnet   | 30184         | `0x1a44076050125825900e736c501f859c50fE728c` |
+To demonstrate the capability, we provide a bidirectional messaging example.
 
-## Example
+👉 **[Run the Example](example/README.md)**
 
-See `example/` for complete bidirectional string messaging:
+- **EVM → GenLayer**: Send a string to the Inbox. The Intelligent Contract claims it.
+- **GenLayer → EVM**: The Intelligent Contract sends a response back to the EVM chain.
 
-- **GL→EVM**: `StringSender.py` → `StringReceiver.sol`
-- **EVM→GL**: `StringSenderEvm.sol` → `StringReceiverIC.py`
+## 🛠 Troubleshooting
 
-```bash
-cd example/smart-contracts && npm install
-# See example/.env.example for configuration
-```
+- **Service Logs**: The `service` console is your best debugging tool. It tracks every step of the relay.
+- **Gas**: Ensure your relayer wallet has ETH on both Base Sepolia and zkSync Sepolia.
+- **Trust**: If messages fail to deliver, check that `set-trusted-forwarder` was run on the target chain.
+- **LayerZero Endpoints**: Ensure you are using the correct Endpoint IDs for your networks.
+  - zkSync Sepolia: `40305`
+  - Base Sepolia: `40245`
 
-## License
+## 📄 License
 
 MIT
