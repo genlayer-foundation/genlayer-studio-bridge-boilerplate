@@ -44,52 +44,68 @@ The bridge implements a **Hub-and-Spoke** model with **zkSync** serving as the c
 ```mermaid
 graph TD
     subgraph "The World"
-        Web[Web Data / APIs]
-        AI[LLM Reasoning]
+        Web["Web Data / APIs"]
+        AI["LLM Reasoning"]
     end
 
     subgraph "GenLayer (The Brain)"
-        IC[Intelligent Contract]
-        Inbox[Inbox Contract]
+        IC["Intelligent Contract<br/>(Your Logic)"]
+        Inbox["BridgeReceiver.py<br/>(Inbox)"]
+        BS_GL["BridgeSender.py<br/>(Outbox)"]
     end
 
     subgraph "Transport"
-        Service[Relay Service]
-        LZ[LayerZero V2]
+        Service["Relay Service<br/>(Node.js)"]
+        BF["BridgeForwarder.sol<br/>(Hub - zkSync)"]
+        BR_HUB["BridgeReceiver.sol<br/>(Hub - zkSync)"]
+        LZ["LayerZero V2"]
     end
 
     subgraph "EVM Chain (The Backbone)"
-        dApp[Your dApp]
+        dApp["Your dApp"]
+        BS_EVM["BridgeSender.sol"]
+        BR_EVM["BridgeReceiver.sol"]
     end
 
-    dApp -->|1. Request Resolution| LZ
-    LZ -->|2. Relay Message| Service
-    Service -->|3. Deliver to Inbox| Inbox
-    Inbox -.->|4. PULL: Process Request| IC
-    IC -->|5. Consult Reality| Web
-    IC -->|6. AI Consensus| AI
-    IC -->|7. Send Result| Service
-    Service -->|8. Relay Result| LZ
-    LZ -->|9. Callback| dApp
+    dApp -.->|"0. Quote Fee"| BS_EVM
+    dApp -->|"1. Request Resolution (+Fees)"| BS_EVM
+    BS_EVM --> LZ
+    LZ -->|"2. Relay Message"| BR_HUB
+    BR_HUB -.->|"2a. Poll Hub"| Service
+    Service -->|"3. Deliver to Inbox"| Inbox
+    Inbox -.->|"4. PULL: active claim"| IC
+    Web -->|"5. Web Data"| IC
+    AI -->|"6. AI Consensus"| IC
+    IC -->|"7. Send Result"| BS_GL
+    BS_GL -.->|"8. Poll Event"| Service
+    Service -.->|"8a. Quote Fee"| BF
+    Service -->|"9. Relay Result (+Fees)"| BF
+    BF --> LZ
+    LZ --> BR_EVM
+    BR_EVM -->|"10. Callback"| dApp
 ```
 
 ### Message Flow
 
 #### GenLayer → EVM
+
 1.  **Source IC** calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`.
 2.  **Service** polls `get_message_hashes()` and `get_message()` on GenLayer.
-3.  **Service** calls `BridgeForwarder.callRemoteArbitrary()` on zkSync with LayerZero fee.
-4.  **LayerZero** delivers to `BridgeReceiver` on destination chain.
-5.  **BridgeReceiver** dispatches to target contract via `processBridgeMessage()`.
+3.  **Service** calls `BridgeForwarder.quoteCallRemoteArbitrary()` to determine the fee.
+4.  **Service** calls `BridgeForwarder.callRemoteArbitrary()` on zkSync (Hub) with the required **native fee**.
+5.  **LayerZero** delivers to `BridgeReceiver` on destination chain (Target).
+6.  **BridgeReceiver** dispatches to target contract via `processBridgeMessage()`.
 
 #### EVM → GenLayer
-1.  **Source Contract** calls `BridgeSender.sendToGenLayer(targetContract, data, options)`.
-2.  **LayerZero** delivers to `BridgeReceiver.sol` on zkSync.
-3.  **BridgeReceiver** stores message (not just event) for polling.
-4.  **Service** polls `getPendingGenLayerMessages()` on zkSync.
-5.  **Service** calls `BridgeReceiver.receive_message()` on GenLayer.
-6.  **Service** calls `markMessageRelayed()` on zkSync.
-7.  **Target IC** calls `BridgeReceiver.claim_all_messages()` to receive (PULL model).
+
+1.  **dApp** calls `BridgeSender.quoteSendToGenLayer()` to get the fee.
+2.  **dApp** calls `BridgeSender.sendToGenLayer(targetContract, data, options)` with `msg.value >= fee`.
+3.  **LayerZero** delivers to `BridgeReceiver.sol` on zkSync (Hub).
+4.  **BridgeReceiver** (Hub) stores message (not just event) for polling.
+5.  **Service** polls `getPendingGenLayerMessages()` on zkSync (Hub).
+6.  **Service** calls `BridgeReceiver.receive_message()` on GenLayer.
+7.  **Service** calls `markMessageRelayed()` on zkSync (Hub).
+8.  **Target IC** calls `BridgeReceiver.claim_all_messages()` to receive (PULL model).
 
 ## 📂 Repository Structure
 
@@ -102,20 +118,20 @@ This is a monorepo containing all components of the bridge:
 
 ## 🔑 Key Contracts
 
-| Contract | Chain | Purpose |
-| :--- | :--- | :--- |
-| `BridgeSender.py` | GenLayer | Stores outbound GL→EVM messages |
-| `BridgeReceiver.py` | GenLayer | Receives EVM→GL messages (PULL model) |
-| `BridgeForwarder.sol` | zkSync | Relays GL→EVM via LayerZero |
-| `BridgeReceiver.sol` | zkSync | Stores EVM→GL messages for polling |
-| `BridgeSender.sol` | Base/EVM | Entry point for EVM→GL messages |
+| Contract              | Chain    | Purpose                               |
+| :-------------------- | :------- | :------------------------------------ |
+| `BridgeSender.py`     | GenLayer | Stores outbound GL→EVM messages       |
+| `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages (PULL model) |
+| `BridgeForwarder.sol` | zkSync   | Relays GL→EVM via LayerZero           |
+| `BridgeReceiver.sol`  | zkSync   | Stores EVM→GL messages for polling    |
+| `BridgeSender.sol`    | Base/EVM | Entry point for EVM→GL messages       |
 
 ## 📋 Prerequisites
 
 To bridge intelligence to your dApp, you need:
 
 - **Node.js**: v18+ & **npm**: v9+
-- **GenLayer Studio Account**: [GenLayer Studio](https://studio.genlayer.com/)
+- **GenLayer Studio**: [GenLayer Studio](https://studio.genlayer.com/)
 - **Wallet**: A private key with testnet funds on:
   - **Base Sepolia** (Example Target Chain)
   - **zkSync Sepolia** (Hub Chain)
@@ -139,12 +155,14 @@ cd service && npm install && cd ..
 Create your environment files.
 
 **Smart Contracts (.env)**
+
 ```bash
 cp smart-contracts/.env.example smart-contracts/.env
 # EDIT: Add your PRIVATE_KEY and RPC URLs
 ```
 
 **Service (.env)**
+
 ```bash
 cp service/.env.example service/.env
 # EDIT: Add your PRIVATE_KEY and GENLAYER_RPC_URL (e.g. https://studio.genlayer.com/api/rpc)
