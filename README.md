@@ -39,7 +39,7 @@ This bridge connects the two, allowing you to build "Intelligent dApps" without 
 
 ## 🏗 Architecture
 
-The bridge implements a **Hub-and-Spoke** model with **ZKsync** serving as the central hub for GenLayer's interactions with the wider EVM ecosystem via LayerZero.
+The bridge implements a **Hub-and-Spoke** model with **ZKsync Era** serving as the central hub for GenLayer's interactions with the wider EVM ecosystem via LayerZero.
 
 ```mermaid
 graph TD
@@ -56,8 +56,8 @@ graph TD
 
     subgraph "Transport"
         Service["Relay Service<br/>(Node.js)"]
-        BF["BridgeForwarder.sol<br/>(Hub - ZKsync)"]
-        BR_HUB["BridgeReceiver.sol<br/>(Hub - ZKsync)"]
+        BF["BridgeForwarder.sol<br/>(Hub - ZKsync Era)"]
+        BR_HUB["BridgeReceiver.sol<br/>(Hub - ZKsync Era)"]
         LZ["LayerZero V2"]
     end
 
@@ -92,7 +92,7 @@ graph TD
 1.  **Source IC** calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`.
 2.  **Service** polls `get_message_hashes()` and `get_message()` on GenLayer.
 3.  **Service** calls `BridgeForwarder.quoteCallRemoteArbitrary()` to determine the fee.
-4.  **Service** calls `BridgeForwarder.callRemoteArbitrary()` on ZKsync (Hub) with the required **native fee**.
+4.  **Service** calls `BridgeForwarder.callRemoteArbitrary()` on ZKsync Era (Hub) with the required **native fee**.
 5.  **LayerZero** delivers to `BridgeReceiver` on destination chain (Target).
 6.  **BridgeReceiver** dispatches to target contract via `processBridgeMessage()`.
 
@@ -100,12 +100,12 @@ graph TD
 
 1.  **dApp** calls `BridgeSender.quoteSendToGenLayer()` to get the fee.
 2.  **dApp** calls `BridgeSender.sendToGenLayer(targetContract, data, options)` with `msg.value >= fee`.
-3.  **LayerZero** delivers to `BridgeReceiver.sol` on ZKsync (Hub).
+3.  **LayerZero** delivers to `BridgeReceiver.sol` on ZKsync Era (Hub).
 4.  **BridgeReceiver** (Hub) stores message (not just event) for polling.
-5.  **Service** polls `getPendingGenLayerMessages()` on ZKsync (Hub).
+5.  **Service** polls `getPendingGenLayerMessages()` on ZKsync Era (Hub).
 6.  **Service** calls `BridgeReceiver.receive_message()` on GenLayer.
 7.  **BridgeReceiver** dispatches to target IC via `emit().process_bridge_message()`.
-8.  **Service** calls `markMessageRelayed()` on ZKsync (Hub).
+8.  **Service** calls `markMessageRelayed()` on ZKsync Era (Hub).
 
 ## 📂 Repository Structure
 
@@ -122,8 +122,8 @@ This is a monorepo containing all components of the bridge:
 | :-------------------- | :------- | :------------------------------------ |
 | `BridgeSender.py`     | GenLayer | Stores outbound GL→EVM messages       |
 | `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages, dispatches to target |
-| `BridgeForwarder.sol` | ZKsync   | Relays GL→EVM via LayerZero           |
-| `BridgeReceiver.sol`  | ZKsync   | Stores EVM→GL messages for polling    |
+| `BridgeForwarder.sol` | ZKsync Era | Relays GL→EVM via LayerZero           |
+| `BridgeReceiver.sol`  | ZKsync Era | Stores EVM→GL messages for polling    |
 | `BridgeSender.sol`    | Base/EVM | Entry point for EVM→GL messages       |
 
 ## 📋 Prerequisites
@@ -134,7 +134,7 @@ To bridge intelligence to your dApp, you need:
 - **GenLayer Studio**: [GenLayer Studio](https://studio.genlayer.com/)
 - **Wallet**: A private key with testnet funds on:
   - **Base Sepolia** (Example Target Chain)
-  - **ZKsync Sepolia** (Hub Chain)
+  - **ZKsync Era Sepolia** (Hub Chain)
 
 ## 🚀 Deployment Guide
 
@@ -179,7 +179,7 @@ cd smart-contracts
 CONTRACT=receiver npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 CONTRACT=receiver npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
 
-# 2. Deploy Forwarder (Hub - ZKsync)
+# 2. Deploy Forwarder (Hub - ZKsync Era)
 CONTRACT=forwarder npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
 
 # 3. Deploy Sender (Target - Base)
@@ -191,7 +191,7 @@ CONTRACT=sender npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 Configure the trust relationships so messages can flow securely.
 
 ```bash
-# Configure Hub (ZKsync)
+# Configure Hub (ZKsync Era)
 ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
 ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
 ACTION=set-bridge-address npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
@@ -217,8 +217,8 @@ Update `service/.env` with your new contract addresses:
 ```env
 BRIDGE_SENDER_ADDRESS=<GenLayer BridgeSender Address>
 BRIDGE_RECEIVER_IC_ADDRESS=<GenLayer BridgeReceiver Address>
-ZKSYNC_BRIDGE_FORWARDER_ADDRESS=<ZKsync BridgeForwarder Address>
-ZKSYNC_BRIDGE_RECEIVER_ADDRESS=<ZKsync BridgeReceiver Address>
+ZKSYNC_BRIDGE_FORWARDER_ADDRESS=<ZKsync Era BridgeForwarder Address>
+ZKSYNC_BRIDGE_RECEIVER_ADDRESS=<ZKsync Era BridgeReceiver Address>
 ```
 
 Start the relay:
@@ -238,19 +238,19 @@ The `service` directory includes a CLI for debugging the bridge state.
 ```bash
 cd service
 
-# Check ZKsync BridgeReceiver state
+# Check ZKsync Era BridgeReceiver state
 npx ts-node cli.ts check-receiver
 
 # Check Base BridgeSender state
 npx ts-node cli.ts check-sender
 
-# Check ZKsync BridgeForwarder state
+# Check ZKsync Era BridgeForwarder state
 npx ts-node cli.ts check-forwarder
 
 # Verify all configurations
 npx ts-node cli.ts check-config
 
-# List pending messages on ZKsync
+# List pending messages on ZKsync Era
 npx ts-node cli.ts pending-messages
 
 # Debug a specific transaction
@@ -269,10 +269,10 @@ To demonstrate the capability, we provide a bidirectional messaging example.
 ## 🛠 Troubleshooting
 
 - **Service Logs**: The `service` console is your best debugging tool. It tracks every step of the relay.
-- **Gas**: Ensure your relayer wallet has ETH on both Base Sepolia and ZKsync Sepolia.
+- **Gas**: Ensure your relayer wallet has ETH on both Base Sepolia and ZKsync Era Sepolia.
 - **Trust**: If messages fail to deliver, check that `set-trusted-forwarder` was run on the target chain.
 - **LayerZero Endpoints**: Ensure you are using the correct Endpoint IDs for your networks.
-  - ZKsync Sepolia: `40305`
+  - ZKsync Era Sepolia: `40305`
   - Base Sepolia: `40245`
 
 ## 📄 License

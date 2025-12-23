@@ -4,16 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Bidirectional cross-chain messaging bridge between GenLayer and EVM chains (Base, zkSync) using LayerZero V2. zkSync serves as the hub chain for both directions.
+Bidirectional cross-chain messaging bridge between GenLayer and EVM chains (Base, ZKsync Era) using LayerZero V2. ZKsync Era serves as the hub chain for both directions.
 
 ## Architecture
 
 ```
 GenLayer → EVM:
-  GenLayer BridgeSender.py → Service polls → zkSync BridgeForwarder → LayerZero → Target EVM
+  GenLayer BridgeSender.py → Service polls → ZKsync Era BridgeForwarder → LayerZero → Target EVM
 
 EVM → GenLayer:
-  EVM BridgeSender.sol → LayerZero → zkSync BridgeReceiver (stores) → Service polls → GenLayer BridgeReceiver.py → Target IC claims
+  EVM BridgeSender.sol → LayerZero → ZKsync Era BridgeReceiver (stores) → Service polls → GenLayer BridgeReceiver.py → Target IC claims
 ```
 
 ## Directory Structure
@@ -29,8 +29,8 @@ EVM → GenLayer:
 | --------------------- | -------- | ------------------------------------- |
 | `BridgeSender.py`     | GenLayer | Stores outbound GL→EVM messages       |
 | `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages (PULL model) |
-| `BridgeForwarder.sol` | zkSync   | Relays GL→EVM via LayerZero           |
-| `BridgeReceiver.sol`  | zkSync   | Stores EVM→GL messages for polling    |
+| `BridgeForwarder.sol` | ZKsync Era | Relays GL→EVM via LayerZero           |
+| `BridgeReceiver.sol`  | ZKsync Era | Stores EVM→GL messages for polling    |
 | `BridgeSender.sol`    | Base/EVM | Entry point for EVM→GL messages       |
 
 ## Commands
@@ -67,11 +67,11 @@ npm run build    # Compile TypeScript
 npm start        # Run service
 
 # Debug CLI
-npx ts-node cli.ts check-receiver    # Check zkSync BridgeReceiver state
+npx ts-node cli.ts check-receiver    # Check ZKsync Era BridgeReceiver state
 npx ts-node cli.ts check-sender      # Check Base BridgeSender state
-npx ts-node cli.ts check-forwarder   # Check zkSync BridgeForwarder state
+npx ts-node cli.ts check-forwarder   # Check ZKsync Era BridgeForwarder state
 npx ts-node cli.ts check-config      # Verify all configurations
-npx ts-node cli.ts pending-messages  # List pending messages on zkSync
+npx ts-node cli.ts pending-messages  # List pending messages on ZKsync Era
 npx ts-node cli.ts debug-tx <hash>   # Debug a transaction
 ```
 
@@ -94,8 +94,8 @@ npx tsx scripts/deploy-string-sender.ts --bridge-sender <addr> --target-contract
 ## LayerZero Endpoint IDs
 
 ```
-zkSync Sepolia: 40305    Base Sepolia: 40245
-zkSync Mainnet: 30165    Base Mainnet: 30184
+ZKsync Era Sepolia: 40305    Base Sepolia: 40245
+ZKsync Era Mainnet: 30165    Base Mainnet: 30184
 ```
 
 ## Environment Variables
@@ -147,18 +147,18 @@ ZKSYNC_BRIDGE_RECEIVER_ADDRESS=0x...
 
 1. Source IC calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`
 2. Service polls `get_message_hashes()` and `get_message()` on GenLayer
-3. Service calls `BridgeForwarder.callRemoteArbitrary()` on zkSync with LayerZero fee
+3. Service calls `BridgeForwarder.callRemoteArbitrary()` on ZKsync Era with LayerZero fee
 4. LayerZero delivers to `BridgeReceiver` on destination chain
 5. BridgeReceiver dispatches to target contract via `processBridgeMessage()`
 
 ### EVM → GenLayer
 
 1. Source contract calls `BridgeSender.sendToGenLayer(targetContract, data, options)`
-2. LayerZero delivers to `BridgeReceiver.sol` on zkSync
+2. LayerZero delivers to `BridgeReceiver.sol` on ZKsync Era
 3. BridgeReceiver stores message (not just event) for polling
-4. Service polls `getPendingGenLayerMessages()` on zkSync
+4. Service polls `getPendingGenLayerMessages()` on ZKsync Era
 5. Service calls `BridgeReceiver.receive_message()` on GenLayer
-6. Service calls `markMessageRelayed()` on zkSync
+6. Service calls `markMessageRelayed()` on ZKsync Era
 7. Target IC calls `BridgeReceiver.claim_all_messages()` to receive (PULL model)
 
 ## Testing

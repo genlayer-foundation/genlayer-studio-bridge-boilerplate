@@ -47,7 +47,7 @@ An EVM contract sends data to GenLayer. The BridgeReceiver dispatches it directl
 
 ### 1. Prerequisites
 - GenLayer `BridgeReceiver` deployed.
-- ZKsync `BridgeReceiver` (Hub) deployed.
+- ZKsync Era `BridgeReceiver` (Hub) deployed.
 - Service relaying EVM → GenLayer.
 
 ### 2. Deploy Contracts
