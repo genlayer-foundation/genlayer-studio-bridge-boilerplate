@@ -41,12 +41,12 @@ cd ..
 
 ---
 
-## 2. EVM → GenLayer (Pull)
+## 2. EVM → GenLayer (Push)
 
-An EVM contract sends data to GenLayer (Inbox), which must be claimed by an Intelligent Contract.
+An EVM contract sends data to GenLayer. The BridgeReceiver dispatches it directly to the target Intelligent Contract.
 
 ### 1. Prerequisites
-- GenLayer `BridgeReceiver` (Inbox) deployed.
+- GenLayer `BridgeReceiver` deployed.
 - ZKsync `BridgeReceiver` (Hub) deployed.
 - Service relaying EVM → GenLayer.
 
@@ -69,16 +69,16 @@ Send transaction on Base Sepolia:
 npx hardhat run scripts/send-to-genlayer.ts --network baseSepoliaTestnet --contract <STRING_SENDER_EVM_ADDRESS> --message "Request #123"
 ```
 
-### 4. Process Inbox
-The message is waiting in the `BridgeReceiver` Inbox.
+### 4. Verify
+The BridgeReceiver automatically dispatches the message to StringReceiverIC.
 1. Go to [GenLayer Studio](https://studio.genlayer.com/).
-2. Run `StringReceiverIC.py` → **Run and Debug**.
-3. Call `claim_messages()`.
-4. Call `get_received_strings()` to verify.
+2. Open `StringReceiverIC.py` → **Run and Debug**.
+3. Call `get_received_strings()` to see the message.
+4. Call `get_received_count()` to verify.
 
 ## Contract Reference
 
 - **`StringSender.py` (GenLayer)**: Encodes string, calls `BridgeSender`.
 - **`StringReceiver.sol` (EVM)**: Becomes `IGenLayerBridgeReceiver`, accepts calls from Bridge.
 - **`StringSenderEvm.sol` (EVM)**: Payable contract, pays fees, sends to Bridge.
-- **`StringReceiverIC.py` (GenLayer)**: Pulls messages via `bridge.claim_all_messages()`.
+- **`StringReceiverIC.py` (GenLayer)**: Receives messages via `process_bridge_message()` from BridgeReceiver.

@@ -48,7 +48,7 @@ No oracle server. No single point of failure. Just a decentralized network of va
 
 The bridge is ready for builders who want to get ahead. We're currently running on GenLayer Studio, which gives you a stable environment with persistent data storage, perfect for developing and testing your cross-chain applications before mainnet.
 
-To handle message relaying, we've built an off-chain service that you deploy alongside your contracts. It polls and forwards messages between chains, giving you the full developer experience today. When mainnet launches, relaying becomes native to the protocol and this service is no longer needed. Your contracts stay the same.
+To handle message relaying, we've built an off-chain service that you deploy alongside your contracts. It polls and forwards messages between chains, giving you the full developer experience today. When mainnet launches, relaying becomes native to the protocol and this service is no longer needed. Your contract logic stays the same.
 
 To get started:
 
