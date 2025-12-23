@@ -3,7 +3,7 @@
  * Send a test string message from GenLayer StringSender.
  *
  * Usage:
- *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio-stage.genlayer.com/api
+ *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio.genlayer.com/api
  *   npx tsx send-test-string.ts --address <StringSender_address> --message "Hello Base!"
  */
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   const { address, message } = parseArgs();
 
   const privateKey = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio-stage.genlayer.com/api';
+  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
 
   if (!privateKey) {
     throw new Error('Missing PRIVATE_KEY environment variable');

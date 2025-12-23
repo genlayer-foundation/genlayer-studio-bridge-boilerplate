@@ -1,0 +1,17 @@
+{
+  "name": "bridge-example",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy-string-receiver": "tsx scripts/deploy-string-receiver-ic.ts",
+    "deploy-string-sender": "tsx scripts/deploy-string-sender.ts",
+    "send-test-string": "tsx scripts/send-test-string.ts"
+  },
+  "dependencies": {
+    "genlayer-js": "^0.18.4"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

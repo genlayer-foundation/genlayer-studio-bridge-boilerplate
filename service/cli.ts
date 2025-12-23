@@ -28,7 +28,7 @@ const CONFIG = {
   // RPCs
   zkSyncRpc: process.env.ZKSYNC_RPC_URL || "https://sepolia.era.zksync.dev",
   baseRpc: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
-  genlayerRpc: process.env.GENLAYER_RPC_URL || "https://studio-stage.genlayer.com/api",
+  genlayerRpc: process.env.GENLAYER_RPC_URL || "https://studio.genlayer.com/api",
 
   // Contracts
   zkSyncBridgeReceiver: process.env.ZKSYNC_BRIDGE_RECEIVER_ADDRESS || "",
@@ -116,8 +116,12 @@ async function checkReceiver() {
 async function checkSender() {
   console.log("Checking Base BridgeSender...\n");
 
-  const senderAddr =
-    CONFIG.bridgeSender || "0x4c5df0951CAbE21AFe30bDa62551e1A5792889E6";
+  if (!CONFIG.bridgeSender) {
+    console.error("BRIDGE_SENDER_ADDRESS not set");
+    return;
+  }
+
+  const senderAddr = CONFIG.bridgeSender;
 
   const provider = new ethers.JsonRpcProvider(CONFIG.baseRpc);
   const contract = new ethers.Contract(senderAddr, BRIDGE_SENDER_ABI, provider);

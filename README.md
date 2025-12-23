@@ -50,7 +50,7 @@ graph TD
 
     subgraph "GenLayer (The Brain)"
         IC["Intelligent Contract<br/>(Your Logic)"]
-        Inbox["BridgeReceiver.py<br/>(Inbox)"]
+        BR_GL["BridgeReceiver.py<br/>(Receiver)"]
         BS_GL["BridgeSender.py<br/>(Outbox)"]
     end
 
@@ -72,8 +72,8 @@ graph TD
     BS_EVM --> LZ
     LZ -->|"2. Relay Message"| BR_HUB
     BR_HUB -.->|"2a. Poll Hub"| Service
-    Service -->|"3. Deliver to Inbox"| Inbox
-    Inbox -.->|"4. PULL: active claim"| IC
+    Service -->|"3. Deliver to Receiver"| BR_GL
+    BR_GL -->|"4. Dispatch via emit()"| IC
     Web -->|"5. Web Data"| IC
     AI -->|"6. AI Consensus"| IC
     IC -->|"7. Send Result"| BS_GL
@@ -104,8 +104,8 @@ graph TD
 4.  **BridgeReceiver** (Hub) stores message (not just event) for polling.
 5.  **Service** polls `getPendingGenLayerMessages()` on ZKsync (Hub).
 6.  **Service** calls `BridgeReceiver.receive_message()` on GenLayer.
-7.  **Service** calls `markMessageRelayed()` on ZKsync (Hub).
-8.  **Target IC** calls `BridgeReceiver.claim_all_messages()` to receive (PULL model).
+7.  **BridgeReceiver** dispatches to target IC via `emit().process_bridge_message()`.
+8.  **Service** calls `markMessageRelayed()` on ZKsync (Hub).
 
 ## 📂 Repository Structure
 
@@ -121,7 +121,7 @@ This is a monorepo containing all components of the bridge:
 | Contract              | Chain    | Purpose                               |
 | :-------------------- | :------- | :------------------------------------ |
 | `BridgeSender.py`     | GenLayer | Stores outbound GL→EVM messages       |
-| `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages (PULL model) |
+| `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages, dispatches to target |
 | `BridgeForwarder.sol` | ZKsync   | Relays GL→EVM via LayerZero           |
 | `BridgeReceiver.sol`  | ZKsync   | Stores EVM→GL messages for polling    |
 | `BridgeSender.sol`    | Base/EVM | Entry point for EVM→GL messages       |
@@ -206,9 +206,9 @@ ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network base
 Deploy the Intelligent Contracts via [GenLayer Studio](https://studio.genlayer.com/):
 
 1.  **Deploy `BridgeSender.py`**: The exit point for results returning to EVM.
-    - _No args required._
-2.  **Deploy `BridgeReceiver.py`**: The **Inbox** that holds incoming requests.
-    - _Arg `initial_relayer`: Your service wallet address (from `.env`)._
+    - _No constructor args._
+2.  **Deploy `BridgeReceiver.py`**: Receives and dispatches incoming requests to target ICs.
+    - _No constructor args. After deployment, call `set_authorized_relayer(wallet_address, true)`._
 
 ### 6. Activate the Resolution Layer
 
@@ -263,7 +263,7 @@ To demonstrate the capability, we provide a bidirectional messaging example.
 
 👉 **[Run the Example](example/README.md)**
 
-- **EVM → GenLayer**: Send a string to the Inbox. The Intelligent Contract claims it.
+- **EVM → GenLayer**: Send a string from Base. The BridgeReceiver dispatches it to your Intelligent Contract.
 - **GenLayer → EVM**: The Intelligent Contract sends a response back to the EVM chain.
 
 ## 🛠 Troubleshooting

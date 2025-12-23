@@ -16,9 +16,16 @@ async function main() {
 
   const sender = await ethers.getContractAt("BridgeSender", senderAddress, signer);
 
-  // Target contract on GenLayer (dummy for test)
-  const targetContract = "0x0000000000000000000000000000000000000001";
-  const messageData = ethers.toUtf8Bytes("Hello GenLayer from Base! " + Date.now());
+  // Target contract on GenLayer (StringReceiverIC)
+  const targetContract = process.env.TARGET_CONTRACT;
+  if (!targetContract) {
+    throw new Error("Missing TARGET_CONTRACT in .env");
+  }
+  // ABI-encode string for StringReceiverIC's MethodDecoder([str])
+  const messageData = ethers.AbiCoder.defaultAbiCoder().encode(
+    ["string"],
+    ["Hello GenLayer from Base! " + Date.now()]
+  );
 
   // Build options with higher gas limit to avoid out of gas on destination
   const options = Options.newOptions()

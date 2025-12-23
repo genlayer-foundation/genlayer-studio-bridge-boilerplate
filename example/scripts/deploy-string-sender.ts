@@ -13,7 +13,7 @@
  *     --target-contract <string_receiver_address>
  *
  * Environment variables:
- *   GENLAYER_RPC_URL - GenLayer RPC endpoint (default: http://localhost:4000/api)
+ *   GENLAYER_RPC_URL - GenLayer RPC endpoint (default: https://studio.genlayer.com/api)
  *   PRIVATE_KEY - Deployer private key
  */
 
@@ -85,7 +85,7 @@ async function main(): Promise<void> {
 
   // Validate environment
   const privateKey = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.GENLAYER_RPC_URL || 'http://localhost:4000/api';
+  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
 
   if (!privateKey) {
     throw new Error('Missing required environment variable: PRIVATE_KEY');

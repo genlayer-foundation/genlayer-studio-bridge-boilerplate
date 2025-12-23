@@ -1,8 +1,8 @@
 /**
- * EVM -> GenLayer Relay
+ * EVM -> GenLayer Relay (LayerZero Pattern)
  *
  * Polls zkSync BridgeReceiver for pending messages and relays them
- * to GenLayer BridgeReceiver IC.
+ * to GenLayer BridgeReceiver IC, which dispatches to target ICs.
  */
 
 import { ethers } from "ethers";
@@ -107,7 +107,7 @@ export class EvmToGenLayerRelay {
       console.log(`  Source: ${message.srcChainId}/${message.srcSender}`);
       console.log(`  Target: ${message.targetContract}`);
 
-      // Check if already on GenLayer
+      // Check if already on GenLayer BridgeReceiver
       const isProcessed = await this.genLayerClient.readContract({
         address: getBridgeReceiverIcAddress() as Address,
         functionName: "is_message_processed",
@@ -116,7 +116,7 @@ export class EvmToGenLayerRelay {
       });
 
       if (isProcessed) {
-        console.log(`[EVM→GL] Already on GenLayer, marking on zkSync`);
+        console.log(`[EVM→GL] Already in BridgeReceiver, marking on zkSync`);
         await this.markRelayedOnZkSync(message.messageId);
         this.processedMessageIds.add(message.messageId);
         return;
@@ -130,8 +130,8 @@ export class EvmToGenLayerRelay {
         );
       }
 
-      // Submit to GenLayer
-      const result = await this.genLayerClient.writeContract({
+      // Call BridgeReceiver which stores + emit() dispatches to target
+      const txHash = await this.genLayerClient.writeContract({
         address: getBridgeReceiverIcAddress() as Address,
         functionName: "receive_message",
         args: [
@@ -142,12 +142,17 @@ export class EvmToGenLayerRelay {
           messageData,
         ],
       });
+      console.log(`[EVM→GL] TX: ${txHash}`);
 
-      console.log(`[EVM→GL] Submitted to GenLayer. TX: ${result.hash}`);
+      await this.genLayerClient.waitForTransactionReceipt({
+        hash: txHash,
+        status: "ACCEPTED",
+        retries: 30,
+      });
 
-      // Mark on zkSync
       await this.markRelayedOnZkSync(message.messageId);
       this.processedMessageIds.add(message.messageId);
+      console.log(`[EVM→GL] Relayed successfully`);
     } catch (error) {
       console.error(`[EVM→GL] Error relaying ${message.messageId}:`, error);
     }

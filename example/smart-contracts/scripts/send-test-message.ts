@@ -15,8 +15,14 @@ dotenv.config({ path: path.join(__dirname, "../.env") });
 
 const { ethers } = hre;
 
+const STRING_SENDER_EVM = process.env.STRING_SENDER_EVM;
+
+if (!STRING_SENDER_EVM) {
+  throw new Error("Missing STRING_SENDER_EVM in .env");
+}
+
 async function main(): Promise<void> {
-  const senderAddress = "0x9438C51A89052255Dd0026dB0F55D196cA82706F";
+  const senderAddress = STRING_SENDER_EVM;
 
   const [signer] = await ethers.getSigners();
   console.log("Signer:", signer.address);

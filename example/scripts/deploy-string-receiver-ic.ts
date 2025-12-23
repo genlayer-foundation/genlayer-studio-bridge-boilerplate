@@ -3,26 +3,29 @@
  * Deploy StringReceiverIC intelligent contract to GenLayer.
  *
  * Usage:
- *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio-stage.genlayer.com/api
- *   npx tsx deploy-string-receiver-ic.ts --bridge-receiver <bridge_receiver_address>
+ *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio.genlayer.com/api
+ *   npx tsx deploy-string-receiver-ic.ts --bridge-receiver <BridgeReceiver_address>
  */
 
 import { readFileSync } from 'fs';
 import { createAccount, createClient } from 'genlayer-js';
-import { localnet } from 'genlayer-js/chains';
+import { studionet } from 'genlayer-js/chains';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// GenLayer BridgeReceiver address
-const DEFAULT_BRIDGE_RECEIVER = '0x7382c2e881f3b4E70cE1158CFFd38DcA2667c91F';
-
 function parseArgs(): { bridgeReceiver: string } {
   const args = process.argv.slice(2);
-  const index = args.findIndex((arg) => arg === '--bridge-receiver');
-  const bridgeReceiver = index !== -1 ? args[index + 1] : DEFAULT_BRIDGE_RECEIVER;
+  const bridgeReceiverIndex = args.findIndex((arg) => arg === '--bridge-receiver');
+  const bridgeReceiver = bridgeReceiverIndex !== -1 ? args[bridgeReceiverIndex + 1] : null;
+
+  if (!bridgeReceiver) {
+    console.error('❌ Missing required argument: --bridge-receiver <BridgeReceiver_address>');
+    process.exit(1);
+  }
+
   return { bridgeReceiver };
 }
 
@@ -32,7 +35,7 @@ async function main(): Promise<void> {
   console.log('🚀 Deploying StringReceiverIC to GenLayer...\n');
 
   const privateKey = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio-stage.genlayer.com/api';
+  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
 
   if (!privateKey) {
     throw new Error('Missing PRIVATE_KEY environment variable');
@@ -40,14 +43,18 @@ async function main(): Promise<void> {
 
   console.log('Configuration:');
   console.log(`  RPC URL: ${rpcUrl}`);
-  console.log(`  Bridge Receiver: ${bridgeReceiver}`);
+  console.log(`  BridgeReceiver: ${bridgeReceiver}`);
   console.log();
 
   const account = createAccount(privateKey as `0x${string}`);
   const client = createClient({
-    chain: localnet,
+    chain: {
+      ...studionet,
+      rpcUrls: {
+        default: { http: [rpcUrl] },
+      },
+    },
     account,
-    endpoint: rpcUrl,
   });
 
   const contractPath = path.resolve(__dirname, '../intelligent-contracts/StringReceiverIC.py');
@@ -79,14 +86,13 @@ async function main(): Promise<void> {
 
   console.log('\n✅ StringReceiverIC deployed successfully!');
   console.log(`  Contract address: ${contractAddress}`);
-  console.log(`  Bridge Receiver: ${bridgeReceiver}`);
 
   console.log('\n📝 Next steps:');
-  console.log('  1. Update StringSenderEvm on Base to target this contract:');
-  console.log(`     await stringSenderEvm.setTargetContract("${contractAddress}")`);
-  console.log('  2. Send a string from Base');
-  console.log('  3. Wait for bridge service to relay');
-  console.log('  4. Call claim_messages() on StringReceiverIC to receive');
+  console.log('  1. Ensure BridgeReceiver has authorized the service wallet as relayer');
+  console.log('  2. Update StringSenderEvm on Base to target this contract');
+  console.log('  3. Send a string from Base');
+  console.log('  4. Bridge service calls BridgeReceiver.receive_message()');
+  console.log('  5. BridgeReceiver dispatches to this contract via process_bridge_message()');
 }
 
 main().catch((error) => {

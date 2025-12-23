@@ -3,7 +3,11 @@
  */
 import hre from "hardhat";
 
-const STRING_RECEIVER = "0x967C4eCE65e7eE77969dc6a688D5c5c355c7ce98";
+const STRING_RECEIVER = process.env.STRING_RECEIVER_ADDRESS;
+
+if (!STRING_RECEIVER) {
+  throw new Error("Missing STRING_RECEIVER_ADDRESS in .env");
+}
 
 async function main() {
   const { ethers } = hre;
