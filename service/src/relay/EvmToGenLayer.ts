@@ -1,8 +1,8 @@
 /**
- * EVM -> GenLayer Relay (LayerZero Pattern)
+ * source chain -> GenLayer relay
  *
- * Polls zkSync BridgeReceiver for pending messages and relays them
- * to GenLayer BridgeReceiver IC, which dispatches to target ICs.
+ * Polls zkSync HubInboundInbox for pending messages and relays them
+ * to GenLayerInbox, which dispatches to target ICs.
  */
 
 import { ethers } from "ethers";
@@ -16,18 +16,20 @@ import {
   getGenlayerRpcUrl,
   getPrivateKey,
 } from "../config.js";
+import { bytes32ToAddress, toUint8Array } from "../codec.js";
 
 interface GenLayerBoundMessage {
   messageId: string;
-  srcChainId: number;
+  srcEid: number;
   srcSender: string;
-  targetContract: string;
-  data: string;
+  target: string;
+  payload: string;
   relayed: boolean;
 }
 
-const BRIDGE_RECEIVER_ABI = [
-  "function getPendingGenLayerMessages() external view returns (bytes32[] messageIds, tuple(bytes32 messageId, uint32 srcChainId, address srcSender, address targetContract, bytes data, bool relayed)[] messages)",
+const HUB_INBOUND_INBOX_ABI = [
+  "function getPendingMessages() external view returns (bytes32[] messageIds, tuple(bytes32 messageId, uint32 srcEid, bytes32 srcSender, bytes32 target, bytes payload, bool relayed)[] messages)",
+  "function getPendingGenLayerMessages() external view returns (bytes32[] messageIds, tuple(bytes32 messageId, uint32 srcEid, bytes32 srcSender, bytes32 target, bytes payload, bool relayed)[] messages)",
   "function isMessageRelayed(bytes32 messageId) external view returns (bool)",
   "function markMessageRelayed(bytes32 messageId) external",
 ];
@@ -45,7 +47,7 @@ export class EvmToGenLayerRelay {
 
     this.zkSyncBridgeReceiver = new ethers.Contract(
       getZkSyncBridgeReceiverAddress(),
-      BRIDGE_RECEIVER_ABI,
+      HUB_INBOUND_INBOX_ABI,
       this.zkSyncWallet
     );
 
@@ -65,14 +67,21 @@ export class EvmToGenLayerRelay {
     this.processedMessageIds = new Set<string>();
 
     console.log(
-      `[EVM→GL] Initialized. zkSync receiver: ${getZkSyncBridgeReceiverAddress()}`
+      `[EVM→GL] Initialized. hub inbound inbox: ${getZkSyncBridgeReceiverAddress()}`
     );
   }
 
   private async getPendingMessages(): Promise<GenLayerBoundMessage[]> {
     try {
-      const [messageIds, messages] =
-        await this.zkSyncBridgeReceiver.getPendingGenLayerMessages();
+      let messageIds: string[];
+      let messages: any[];
+      try {
+        [messageIds, messages] =
+          await this.zkSyncBridgeReceiver.getPendingMessages();
+      } catch {
+        [messageIds, messages] =
+          await this.zkSyncBridgeReceiver.getPendingGenLayerMessages();
+      }
 
       console.log(`[EVM→GL] Found ${messageIds.length} pending on zkSync`);
 
@@ -86,10 +95,10 @@ export class EvmToGenLayerRelay {
         const msg = messages[i];
         newMessages.push({
           messageId: msgId,
-          srcChainId: Number(msg.srcChainId),
+          srcEid: Number(msg.srcEid ?? msg.srcChainId),
           srcSender: msg.srcSender,
-          targetContract: msg.targetContract,
-          data: msg.data,
+          target: msg.target ?? msg.targetContract,
+          payload: msg.payload ?? msg.data,
           relayed: msg.relayed,
         });
       }
@@ -104,10 +113,10 @@ export class EvmToGenLayerRelay {
   private async relayMessage(message: GenLayerBoundMessage): Promise<void> {
     try {
       console.log(`[EVM→GL] Processing message ${message.messageId}`);
-      console.log(`  Source: ${message.srcChainId}/${message.srcSender}`);
-      console.log(`  Target: ${message.targetContract}`);
+      console.log(`  Source: ${message.srcEid}/${message.srcSender}`);
+      console.log(`  Target: ${message.target}`);
 
-      // Check if already on GenLayer BridgeReceiver
+      // Check if already on GenLayerInbox
       const isProcessed = await this.genLayerClient.readContract({
         address: getBridgeReceiverIcAddress() as Address,
         functionName: "is_message_processed",
@@ -116,29 +125,24 @@ export class EvmToGenLayerRelay {
       });
 
       if (isProcessed) {
-        console.log(`[EVM→GL] Already in BridgeReceiver, marking on zkSync`);
+        console.log(`[EVM→GL] Already in GenLayerInbox, marking on zkSync`);
         await this.markRelayedOnZkSync(message.messageId);
         this.processedMessageIds.add(message.messageId);
         return;
       }
 
-      // Convert data to bytes
-      let messageData: string | Uint8Array = message.data;
-      if (typeof messageData === "string" && messageData.startsWith("0x")) {
-        messageData = new Uint8Array(
-          Buffer.from(messageData.slice(2), "hex")
-        );
-      }
+      const targetContract = bytes32ToAddress(message.target);
+      const messageData = toUint8Array(message.payload);
 
-      // Call BridgeReceiver which stores + emit() dispatches to target
+      // Call GenLayerInbox, which stores + emit() dispatches to target
       const txHash = await this.genLayerClient.writeContract({
         address: getBridgeReceiverIcAddress() as Address,
         functionName: "receive_message",
         args: [
           message.messageId,
-          message.srcChainId,
+          message.srcEid,
           message.srcSender,
-          message.targetContract,
+          targetContract,
           messageData,
         ],
       });

@@ -1,170 +1,93 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This repo is a bidirectional bridge between GenLayer Intelligent Contracts and
+external chains using LayerZero V2 with zkSync Era as the hub chain.
 
-## Overview
+## Current Architecture
 
-Bidirectional cross-chain messaging bridge between GenLayer and EVM chains (Base, ZKsync Era) using LayerZero V2. ZKsync Era serves as the hub chain for both directions.
+GenLayer -> destination:
 
-## Architecture
-
-```
-GenLayer → EVM:
-  GenLayer BridgeSender.py → Service polls → ZKsync Era BridgeForwarder → LayerZero → Target EVM
-
-EVM → GenLayer:
-  EVM BridgeSender.sol → LayerZero → ZKsync Era BridgeReceiver (stores) → Service polls → GenLayer BridgeReceiver.py → Target IC claims
+```text
+GenLayerOutbox.py -> service -> HubOutboundRouter.sol -> LayerZero -> EvmChainInbox.sol / SolanaBridgeEndpoint -> receiver app
 ```
 
-## Directory Structure
+source chain -> GenLayer:
 
-- `/smart-contracts` - Solidity contracts for EVM chains (Hardhat)
-- `/intelligent-contracts` - Python contracts for GenLayer
-- `/service` - Node.js relay service that polls and relays messages
-- `/example` - Complete bidirectional example with StringSender/StringReceiver
+```text
+EvmChainOutbox.sol / SolanaBridgeEndpoint -> LayerZero -> HubInboundInbox.sol -> service -> GenLayerInbox.py -> target IC
+```
 
-## Key Contracts
+Legacy `BridgeSender`, `BridgeReceiver`, and `BridgeForwarder` contracts remain
+in the repo for compatibility. New work should use the role-named contracts.
 
-| Contract              | Chain    | Purpose                               |
-| --------------------- | -------- | ------------------------------------- |
-| `BridgeSender.py`     | GenLayer | Stores outbound GL→EVM messages       |
-| `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages (PULL model) |
-| `BridgeForwarder.sol` | ZKsync Era | Relays GL→EVM via LayerZero           |
-| `BridgeReceiver.sol`  | ZKsync Era | Stores EVM→GL messages for polling    |
-| `BridgeSender.sol`    | Base/EVM | Entry point for EVM→GL messages       |
+## Key Files
+
+- `intelligent-contracts/GenLayerOutbox.py`: stores GenLayer-originated messages.
+- `intelligent-contracts/GenLayerInbox.py`: receives relayed messages into GenLayer.
+- `smart-contracts/contracts/HubOutboundRouter.sol`: zkSync outbound router.
+- `smart-contracts/contracts/HubInboundInbox.sol`: zkSync inbound message store.
+- `smart-contracts/contracts/EvmChainOutbox.sol`: EVM source endpoint.
+- `smart-contracts/contracts/EvmChainInbox.sol`: EVM destination endpoint.
+- `smart-contracts/contracts/libs/BridgeCodec.sol`: canonical envelope codec.
+- `service/src/codec.ts`: TypeScript copy of the envelope codec.
+- `solana/bridge-endpoint`: Anchor Solana endpoint, codec, and validator tests.
+
+## Canonical Envelope
+
+Every bridge leg uses:
+
+```text
+abi.encode(uint16 version, bytes32 messageId, uint32 sourceEid, bytes32 sourceSender, bytes32 target, bytes payload)
+```
+
+EVM/GenLayer addresses are right-aligned in `bytes32`. Solana pubkeys use the
+full 32 bytes. `payload` is receiver-owned opaque bytes.
 
 ## Commands
 
-### Smart Contracts
+```bash
+cd smart-contracts
+npm install
+npm test
+npx tsc --noEmit
+
+cd ../service
+npm install
+npm test
+
+cd ../solana/bridge-endpoint
+npm install
+cargo test
+npm test
+```
+
+## Deploy
 
 ```bash
 cd smart-contracts
 
-# Compile
-npx hardhat compile
+CONTRACT=hub-inbound npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
+CONTRACT=hub-outbound npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
+CONTRACT=evm-outbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+CONTRACT=evm-inbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+```
 
-# Run tests
-npx hardhat test
+## Configure
 
-# Deploy (unified script)
-CONTRACT=receiver npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
-CONTRACT=forwarder npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
-CONTRACT=sender npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
-
-# Configure (unified script)
-ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
+```bash
+ACTION=set-trusted-source npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
 ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-ACTION=set-bridge-address npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-ACTION=set-sender-receiver npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-destination-endpoint npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
+ACTION=set-hub-inbox npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-trusted-hub-router npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 ```
 
-### Bridge Service
+## Solana Notes
 
-```bash
-cd service
+LayerZero Solana OApps must implement `init`, `lz_receive`,
+`lz_receive_types_info`, and `lz_receive_types_v2`. The bridge supports:
 
-npm run build    # Compile TypeScript
-npm start        # Run service
+- direct receivers when receiver accounts are static or payload-derivable;
+- store-and-claim when receiver accounts are dynamic.
 
-# Debug CLI
-npx ts-node cli.ts check-receiver    # Check ZKsync Era BridgeReceiver state
-npx ts-node cli.ts check-sender      # Check Base BridgeSender state
-npx ts-node cli.ts check-forwarder   # Check ZKsync Era BridgeForwarder state
-npx ts-node cli.ts check-config      # Verify all configurations
-npx ts-node cli.ts pending-messages  # List pending messages on ZKsync Era
-npx ts-node cli.ts debug-tx <hash>   # Debug a transaction
-```
-
-### Example Contracts
-
-```bash
-cd example
-
-# Deploy StringSender to GenLayer
-npx tsx scripts/deploy-string-sender.ts --bridge-sender <addr> --target-contract <addr>
-```
-
-## Key Design Patterns
-
-1. **Stored Message Polling** - Both directions poll stored messages instead of events for reliability
-2. **PULL Model for GenLayer** - Target ICs must call `claim_messages()` because GenLayer's `emit()` doesn't propagate state changes
-3. **Authorized Relayers** - Bridge service wallet must be authorized on both BridgeReceiver contracts
-4. **Replay Prevention** - `usedTxHash` mapping in BridgeForwarder, `received_messages` in BridgeReceiver.py
-
-## LayerZero Endpoint IDs
-
-```
-ZKsync Era Sepolia: 40305    Base Sepolia: 40245
-ZKsync Era Mainnet: 30165    Base Mainnet: 30184
-```
-
-## Environment Variables
-
-### Service (`service/.env`)
-
-```bash
-# RPC URLs
-FORWARDER_NETWORK_RPC_URL=https://sepolia.era.zksync.dev
-GENLAYER_RPC_URL=https://studio.genlayer.com/api
-ZKSYNC_RPC_URL=https://sepolia.era.zksync.dev
-
-# GenLayer → EVM contracts
-BRIDGE_FORWARDER_ADDRESS=0x...
-BRIDGE_SENDER_ADDRESS=0x...
-
-# EVM → GenLayer contracts
-BRIDGE_RECEIVER_IC_ADDRESS=0x...
-ZKSYNC_BRIDGE_RECEIVER_ADDRESS=0x...
-
-# Auth
-PRIVATE_KEY=...
-
-# Sync intervals (cron format)
-BRIDGE_SYNC_INTERVAL=*/1 * * * *
-EVM_TO_GL_SYNC_INTERVAL=*/1 * * * *
-```
-
-### Smart Contracts (`smart-contracts/.env`)
-
-```bash
-PRIVATE_KEY=...
-OWNER_ADDRESS=0x...
-CALLER_ADDRESS=0x...
-
-# LayerZero endpoints
-ZKSYNCSEPOLIATESTNET_ENDPOINT=0xe2Ef622A13e71D9Dd2BBd12cd4b27e1516FA8a09
-BASESEPOLIATESTNET_ENDPOINT=0x6EDCE65403992e310A62460808c4b910D972f10f
-
-# Contract addresses for configuration scripts
-BRIDGE_FORWARDER_ADDRESS=0x...
-BRIDGE_RECEIVER_ADDRESS=0x...
-ZKSYNC_BRIDGE_RECEIVER_ADDRESS=0x...
-```
-
-## Message Flow Details
-
-### GenLayer → EVM
-
-1. Source IC calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`
-2. Service polls `get_message_hashes()` and `get_message()` on GenLayer
-3. Service calls `BridgeForwarder.callRemoteArbitrary()` on ZKsync Era with LayerZero fee
-4. LayerZero delivers to `BridgeReceiver` on destination chain
-5. BridgeReceiver dispatches to target contract via `processBridgeMessage()`
-
-### EVM → GenLayer
-
-1. Source contract calls `BridgeSender.sendToGenLayer(targetContract, data, options)`
-2. LayerZero delivers to `BridgeReceiver.sol` on ZKsync Era
-3. BridgeReceiver stores message (not just event) for polling
-4. Service polls `getPendingGenLayerMessages()` on ZKsync Era
-5. Service calls `BridgeReceiver.receive_message()` on GenLayer
-6. Service calls `markMessageRelayed()` on ZKsync Era
-7. Target IC calls `BridgeReceiver.claim_all_messages()` to receive (PULL model)
-
-## Testing
-
-```bash
-cd smart-contracts
-npx hardhat test                           # All tests
-npx hardhat test test/BridgeForwarder.test.ts  # Specific file
-```
+Reference: https://docs.layerzero.network/v2/developers/solana/oapp/overview

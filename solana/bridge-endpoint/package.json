@@ -1,0 +1,33 @@
+{
+  "name": "@genlayer/solana-bridge-endpoint",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "anchor build",
+    "pretest": "node scripts/ensure-test-wallet.mjs",
+    "test": "npm run build && node scripts/run-local-validator-tests.mjs",
+    "test:anchor": "ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.test.ts",
+    "devnet:deploy-program": "node scripts/deploy-program-devnet.mjs",
+    "devnet:init": "node scripts/init-devnet.mjs",
+    "devnet:configure": "node scripts/configure-devnet.mjs",
+    "devnet:init-lz-path": "node scripts/init-lz-path-devnet.mjs",
+    "devnet:send-to-hub": "node scripts/send-to-hub-devnet.mjs",
+    "devnet:receiver-state": "node scripts/read-receiver-state.mjs",
+    "oapp:identity": "node scripts/oapp-identity.mjs",
+    "pubkey:bytes32": "node scripts/pubkey-to-bytes32.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@layerzerolabs/lz-solana-sdk-v2": "^3.0.168",
+    "@layerzerolabs/lz-v2-utilities": "^3.0.168",
+    "@solana/web3.js": "^1.98.4",
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.10.2",
+    "bn.js": "^5.2.3",
+    "chai": "^4.5.0",
+    "ts-mocha": "^10.0.0",
+    "typescript": "^5.8.3"
+  }
+}

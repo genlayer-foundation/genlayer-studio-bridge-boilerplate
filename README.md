@@ -1,280 +1,259 @@
 # GenLayer Bridge Boilerplate
 
-**Connect your blockchain to the Resolution Layer.**
+Bidirectional bridge infrastructure between GenLayer Intelligent Contracts and
+external chains through an EVM hub chain and LayerZero V2.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Status](https://img.shields.io/badge/status-beta-orange.svg)
+The bridge is deliberately split by role. Each component has one job, which
+makes the EVM and Solana paths easier to reason about and test.
 
-This boilerplate provides the complete infrastructure to connect **GenLayer Intelligent Contracts** with **EVM** chains (Base, Ethereum, etc.) via **LayerZero V2**. It enables any blockchain to offload complex, non-deterministic work—AI reasoning, web access, data verification—to GenLayer and receive verified results.
+## Architecture
 
-## 📚 Table of Contents
+### GenLayer -> Destination Chain
 
-- [The Resolution Layer](#-the-resolution-layer)
-- [Architecture](#-architecture)
-  - [Message Flow](#message-flow)
-- [Repository Structure](#-repository-structure)
-- [Key Contracts](#-key-contracts)
-- [Prerequisites](#-prerequisites)
-- [Deployment Guide](#-deployment-guide)
-  - [1. Installation](#1-installation)
-  - [2. Configuration](#2-configuration)
-  - [3. Deploy EVM Infrastructure](#3-deploy-evm-infrastructure)
-  - [4. Link EVM Contracts](#4-link-evm-contracts)
-  - [5. Deploy GenLayer "Brain"](#5-deploy-genlayer-brain)
-  - [6. Activate the Resolution Layer](#6-activate-the-resolution-layer)
-- [Development & Debugging](#-development--debugging)
-- [Troubleshooting](#-troubleshooting)
-- [License](#-license)
-
----
-
-## 🌐 The Resolution Layer
-
-Blockchains are powerful but blind. They cannot read news, verify events, or access the web. GenLayer solves this by acting as the **Resolution Layer** for the ecosystem.
-
-- **Your Chain (Backbone)**: Holds liquidity, users, and core logic.
-- **GenLayer (Brain)**: Handles intelligence, web data, and AI processing.
-
-This bridge connects the two, allowing you to build "Intelligent dApps" without migrating your users or liquidity.
-
-## 🏗 Architecture
-
-The bridge implements a **Hub-and-Spoke** model with **ZKsync Era** serving as the central hub for GenLayer's interactions with the wider EVM ecosystem via LayerZero.
-
-```mermaid
-graph TD
-    subgraph "The World"
-        Web["Web Data / APIs"]
-        AI["LLM Reasoning"]
-    end
-
-    subgraph "GenLayer (The Brain)"
-        IC["Intelligent Contract<br/>(Your Logic)"]
-        BR_GL["BridgeReceiver.py<br/>(Receiver)"]
-        BS_GL["BridgeSender.py<br/>(Outbox)"]
-    end
-
-    subgraph "Transport"
-        Service["Relay Service<br/>(Node.js)"]
-        BF["BridgeForwarder.sol<br/>(Hub - ZKsync Era)"]
-        BR_HUB["BridgeReceiver.sol<br/>(Hub - ZKsync Era)"]
-        LZ["LayerZero V2"]
-    end
-
-    subgraph "EVM Chain (The Backbone)"
-        dApp["Your dApp"]
-        BS_EVM["BridgeSender.sol"]
-        BR_EVM["BridgeReceiver.sol"]
-    end
-
-    dApp -.->|"0. Quote Fee"| BS_EVM
-    dApp -->|"1. Request Resolution (+Fees)"| BS_EVM
-    BS_EVM --> LZ
-    LZ -->|"2. Relay Message"| BR_HUB
-    BR_HUB -.->|"2a. Poll Hub"| Service
-    Service -->|"3. Deliver to Receiver"| BR_GL
-    BR_GL -->|"4. Dispatch via emit()"| IC
-    Web -->|"5. Web Data"| IC
-    AI -->|"6. AI Consensus"| IC
-    IC -->|"7. Send Result"| BS_GL
-    BS_GL -.->|"8. Poll Event"| Service
-    Service -.->|"8a. Quote Fee"| BF
-    Service -->|"9. Relay Result (+Fees)"| BF
-    BF --> LZ
-    LZ --> BR_EVM
-    BR_EVM -->|"10. Callback"| dApp
+```text
+Intelligent Contract
+  -> GenLayerOutbox.py
+  -> Relay Service
+  -> HubOutboundRouter.sol on the hub EVM chain
+  -> LayerZero
+  -> EvmChainInbox.sol or SolanaBridgeEndpoint
+  -> Destination receiver app
 ```
 
-### Message Flow
+Contracts:
 
-#### GenLayer → EVM
+- `intelligent-contracts/GenLayerOutbox.py`
+  - Stores GenLayer-originated outbound messages.
+  - Produces the canonical bridge envelope.
+- `smart-contracts/contracts/HubOutboundRouter.sol`
+  - Authorized relay entrypoint on the hub EVM chain.
+  - Enforces replay protection by `messageId`.
+  - Routes the encoded envelope through LayerZero.
+- `smart-contracts/contracts/EvmChainInbox.sol`
+  - Destination EVM inbox.
+  - Verifies the trusted hub router.
+  - Calls `processBridgeMessage(messageId, sourceEid, sourceSender, payload)`.
+- `solana/bridge-endpoint`
+  - Anchor endpoint program for the Solana side.
+  - Decodes the canonical envelope, validates trusted peers, supports
+    store-and-claim and direct receiver modes, and exposes LayerZero-compatible
+    `lz_receive`, `lz_receive_types_info`, and `lz_receive_types_v2` hooks.
 
-1.  **Source IC** calls `BridgeSender.send_message(target_chain_eid, target_contract, data)`.
-2.  **Service** polls `get_message_hashes()` and `get_message()` on GenLayer.
-3.  **Service** calls `BridgeForwarder.quoteCallRemoteArbitrary()` to determine the fee.
-4.  **Service** calls `BridgeForwarder.callRemoteArbitrary()` on ZKsync Era (Hub) with the required **native fee**.
-5.  **LayerZero** delivers to `BridgeReceiver` on destination chain (Target).
-6.  **BridgeReceiver** dispatches to target contract via `processBridgeMessage()`.
+### Source Chain -> GenLayer
 
-#### EVM → GenLayer
+```text
+Source app
+  -> EvmChainOutbox.sol or SolanaBridgeEndpoint
+  -> LayerZero
+  -> HubInboundInbox.sol on the hub EVM chain
+  -> Relay Service
+  -> GenLayerInbox.py
+  -> Target Intelligent Contract
+```
 
-1.  **dApp** calls `BridgeSender.quoteSendToGenLayer()` to get the fee.
-2.  **dApp** calls `BridgeSender.sendToGenLayer(targetContract, data, options)` with `msg.value >= fee`.
-3.  **LayerZero** delivers to `BridgeReceiver.sol` on ZKsync Era (Hub).
-4.  **BridgeReceiver** (Hub) stores message (not just event) for polling.
-5.  **Service** polls `getPendingGenLayerMessages()` on ZKsync Era (Hub).
-6.  **Service** calls `BridgeReceiver.receive_message()` on GenLayer.
-7.  **BridgeReceiver** dispatches to target IC via `emit().process_bridge_message()`.
-8.  **Service** calls `markMessageRelayed()` on ZKsync Era (Hub).
+Contracts:
 
-## 📂 Repository Structure
+- `smart-contracts/contracts/EvmChainOutbox.sol`
+  - Source EVM endpoint.
+  - Packages source messages in the canonical envelope and sends to the hub.
+- `solana/bridge-endpoint`
+  - Source Solana endpoint.
+  - Packages Solana-originated payload bytes in the canonical envelope and
+    sends them to the configured hub inbox through LayerZero.
+- `smart-contracts/contracts/HubInboundInbox.sol`
+  - Hub inbox for GenLayer-bound messages.
+  - Verifies trusted source endpoints.
+  - Stores pending messages for the relay service.
+- `intelligent-contracts/GenLayerInbox.py`
+  - Authorized relay entrypoint on GenLayer.
+  - Enforces replay protection.
+  - Dispatches to target Intelligent Contracts.
 
-This is a monorepo containing all components of the bridge:
+Legacy contracts are still present for compatibility, but new deployments should
+use the role-named contracts above.
 
-- **/smart-contracts**: Solidity contracts for EVM chains (Hardhat).
-- **/intelligent-contracts**: Python contracts for GenLayer.
-- **/service**: Node.js relay service that polls and relays messages.
-- **/example**: Complete bidirectional example with StringSender/StringReceiver.
+## Canonical Envelope
 
-## 🔑 Key Contracts
+All chains use one wire format:
 
-| Contract              | Chain    | Purpose                               |
-| :-------------------- | :------- | :------------------------------------ |
-| `BridgeSender.py`     | GenLayer | Stores outbound GL→EVM messages       |
-| `BridgeReceiver.py`   | GenLayer | Receives EVM→GL messages, dispatches to target |
-| `BridgeForwarder.sol` | ZKsync Era | Relays GL→EVM via LayerZero           |
-| `BridgeReceiver.sol`  | ZKsync Era | Stores EVM→GL messages for polling    |
-| `BridgeSender.sol`    | Base/EVM | Entry point for EVM→GL messages       |
+```text
+abi.encode(
+  uint16  version,
+  bytes32 messageId,
+  uint32  sourceEid,
+  bytes32 sourceSender,
+  bytes32 target,
+  bytes   payload
+)
+```
 
-## 📋 Prerequisites
+Rules:
 
-To bridge intelligence to your dApp, you need:
+- `version` is currently `1`.
+- EVM and GenLayer addresses are right-aligned in `bytes32`.
+- Solana pubkeys use the full native 32 bytes.
+- `payload` is opaque to the bridge and belongs to the destination receiver.
 
-- **Node.js**: v18+ & **npm**: v9+
-- **GenLayer Studio**: [GenLayer Studio](https://studio.genlayer.com/)
-- **Wallet**: A private key with testnet funds on:
-  - **Base Sepolia** (Example Target Chain)
-  - **ZKsync Era Sepolia** (Hub Chain)
+This means GenLayer does not need Solana Borsh/Anchor bindings to bridge to
+Solana. It only needs to emit a 32 byte target and receiver-specific payload
+bytes.
 
-## 🚀 Deployment Guide
+For GenLayer -> Solana through an EVM hub, distinguish the LayerZero transport
+origin from the canonical bridge origin: LayerZero sees the hub as `src_eid` /
+`sender`, while the envelope still reports GenLayer as
+`sourceEid` / `sourceSender`.
 
-Follow these steps to deploy your own instance of the bridge infrastructure.
+For Solana -> GenLayer, the envelope `sourceEid` is the Solana LayerZero EID
+configured in the Solana Store PDA and `sourceSender` is the Solana payer
+pubkey. The LayerZero remote receiver is configured separately as an outbound
+peer because the hub inbox and hub outbound router can be different contracts
+even when they share the same hub EID.
 
-### 1. Installation
+## Solana Receiver Model
+
+Solana instructions require the full account list up front. The bridge supports
+two receiver modes:
+
+- `DirectCpiReceiver`: `lz_receive_types_v2` returns the known receiver account
+  list, and `lz_receive` immediately applies the payload. The local program
+  writes to an in-program receiver-state PDA; a production receiver can replace
+  that with receiver-specific CPI.
+- `StoreAndClaim`: `lz_receive` stores the message in a PDA keyed by the
+  canonical bridge `messageId`, and a later claim transaction supplies the
+  dynamic receiver accounts.
+
+Use direct CPI when receiver accounts are static or derivable from the payload.
+Use store-and-claim when accounts are user/order/token specific.
+
+LayerZero Solana OApps must implement `init`, `lz_receive`,
+`lz_receive_types_info`, and `lz_receive_types_v2`. Reference:
+https://docs.layerzero.network/v2/developers/solana/oapp/overview
+
+The Solana endpoint also includes the source-chain path:
+
+- `set_outbound_peer`: configures the hub inbox bytes32 for a destination EID.
+- `quote_send_to_gen_layer`: quotes the LayerZero fee for the canonical
+  Solana-originated envelope.
+- `send_to_gen_layer`: builds the canonical envelope, increments the outbound
+  nonce, and CPIs into the configured LayerZero Endpoint.
+
+The Solana tests also share `test-vectors/bridge-envelope.json` with the EVM
+and service tests, so Rust, Solidity, and TypeScript all assert the same
+canonical bytes.
+
+## Repository Layout
+
+```text
+intelligent-contracts/
+  GenLayerOutbox.py
+  GenLayerInbox.py
+
+smart-contracts/
+  contracts/
+    HubOutboundRouter.sol
+    HubInboundInbox.sol
+    EvmChainOutbox.sol
+    EvmChainInbox.sol
+    libs/BridgeCodec.sol
+  test/BridgeCodecFlow.test.ts
+
+service/
+  src/codec.ts
+  src/relay/GenLayerToEvm.ts
+  src/relay/EvmToGenLayer.ts
+
+solana/
+  README.md
+  bridge-endpoint/
+```
+
+## Development
+
+Install dependencies:
 
 ```bash
-# 1. Install Smart Contracts dependencies (EVM)
-cd smart-contracts && npm install && cd ..
-
-# 2. Install Bridge Service dependencies (Relayer)
-cd service && npm install && cd ..
+cd smart-contracts && npm install
+cd ../service && npm install
+cd ../solana/bridge-endpoint && npm install
 ```
 
-### 2. Configuration
-
-Create your environment files.
-
-**Smart Contracts (.env)**
-
-```bash
-cp smart-contracts/.env.example smart-contracts/.env
-# EDIT: Add your PRIVATE_KEY and RPC URLs
-```
-
-**Service (.env)**
-
-```bash
-cp service/.env.example service/.env
-# EDIT: Add your PRIVATE_KEY and GENLAYER_RPC_URL (e.g. https://studio.genlayer.com/api/rpc)
-```
-
-### 3. Deploy EVM Infrastructure
-
-Deploy the "mailbox" contracts to the EVM chains.
+Run tests:
 
 ```bash
 cd smart-contracts
+npm test
 
-# 1. Deploy Receiver (Target & Hub)
-CONTRACT=receiver npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
-CONTRACT=receiver npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
+cd ../service
+npm test
 
-# 2. Deploy Forwarder (Hub - ZKsync Era)
-CONTRACT=forwarder npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
-
-# 3. Deploy Sender (Target - Base)
-CONTRACT=sender npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+cd ../solana/bridge-endpoint
+cargo test
+npm test
 ```
 
-### 4. Link EVM Contracts
+CI runs the same coverage on pull requests and pushes to `main`: smart-contract
+tests and typecheck, relay service tests and typecheck, and Solana Rust,
+TypeScript, and Anchor validator tests.
 
-Configure the trust relationships so messages can flow securely.
+## Deployment
+
+Deploy hub contracts on an EVM hub chain. Base Sepolia is the PR's tested
+bidirectional Solana smoke-test hub; zkSync Sepolia can still be used for
+EVM-to-Solana tests, but Solana-to-zkSync Sepolia requires LayerZero Devnet
+pricefeed support for that route.
 
 ```bash
-# Configure Hub (ZKsync Era)
-ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-ACTION=set-bridge-address npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-
-# Configure Target (Base)
-ACTION=set-sender-receiver npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
-ACTION=set-trusted-forwarder npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+cd smart-contracts
+CONTRACT=hub-inbound npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+CONTRACT=hub-outbound npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 ```
 
-### 5. Deploy GenLayer "Brain"
+Deploy EVM endpoint contracts on a source/destination EVM chain:
 
-Deploy the Intelligent Contracts via [GenLayer Studio](https://studio.genlayer.com/):
+```bash
+CONTRACT=evm-outbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+CONTRACT=evm-inbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+```
 
-1.  **Deploy `BridgeSender.py`**: The exit point for results returning to EVM.
-    - _No constructor args._
-2.  **Deploy `BridgeReceiver.py`**: Receives and dispatches incoming requests to target ICs.
-    - _No constructor args. After deployment, call `set_authorized_relayer(wallet_address, true)`._
+Configure trust:
 
-### 6. Activate the Resolution Layer
+```bash
+# Source EVM -> GenLayer
+ACTION=set-trusted-source npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-hub-inbox npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 
-Update `service/.env` with your new contract addresses:
+# GenLayer -> EVM
+ACTION=set-destination-endpoint npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-trusted-hub-router npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+```
+
+Deploy `GenLayerOutbox.py` and `GenLayerInbox.py` on GenLayer, then authorize
+the service wallet on `GenLayerInbox.py`.
+
+## Service Configuration
 
 ```env
-BRIDGE_SENDER_ADDRESS=<GenLayer BridgeSender Address>
-BRIDGE_RECEIVER_IC_ADDRESS=<GenLayer BridgeReceiver Address>
-ZKSYNC_BRIDGE_FORWARDER_ADDRESS=<ZKsync Era BridgeForwarder Address>
-ZKSYNC_BRIDGE_RECEIVER_ADDRESS=<ZKsync Era BridgeReceiver Address>
+GENLAYER_OUTBOX_ADDRESS=
+GENLAYER_INBOX_ADDRESS=
+HUB_OUTBOUND_ROUTER_ADDRESS=
+HUB_INBOUND_INBOX_ADDRESS=
+FORWARDER_NETWORK_RPC_URL=
+ZKSYNC_RPC_URL=
+GENLAYER_RPC_URL=
+PRIVATE_KEY=
+BRIDGE_SYNC_INTERVAL="*/5 * * * *"
+EVM_TO_GL_SYNC_INTERVAL="*/1 * * * *"
 ```
 
-Start the relay:
+Backward-compatible env names are still accepted:
 
-```bash
-cd service
-npm run build
-npm start
+```env
+BRIDGE_SENDER_ADDRESS=
+BRIDGE_RECEIVER_IC_ADDRESS=
+BRIDGE_FORWARDER_ADDRESS=
+ZKSYNC_BRIDGE_RECEIVER_ADDRESS=
 ```
 
-_The service is now polling. Your bridge is live._
-
-## 🛠 Development & Debugging
-
-The `service` directory includes a CLI for debugging the bridge state.
-
-```bash
-cd service
-
-# Check ZKsync Era BridgeReceiver state
-npx ts-node cli.ts check-receiver
-
-# Check Base BridgeSender state
-npx ts-node cli.ts check-sender
-
-# Check ZKsync Era BridgeForwarder state
-npx ts-node cli.ts check-forwarder
-
-# Verify all configurations
-npx ts-node cli.ts check-config
-
-# List pending messages on ZKsync Era
-npx ts-node cli.ts pending-messages
-
-# Debug a specific transaction
-npx ts-node cli.ts debug-tx <hash>
-```
-
-## 🧪 Example: "Hello World"
-
-To demonstrate the capability, we provide a bidirectional messaging example.
-
-👉 **[Run the Example](example/README.md)**
-
-- **EVM → GenLayer**: Send a string from Base. The BridgeReceiver dispatches it to your Intelligent Contract.
-- **GenLayer → EVM**: The Intelligent Contract sends a response back to the EVM chain.
-
-## 🛠 Troubleshooting
-
-- **Service Logs**: The `service` console is your best debugging tool. It tracks every step of the relay.
-- **Gas**: Ensure your relayer wallet has ETH on both Base Sepolia and ZKsync Era Sepolia.
-- **Trust**: If messages fail to deliver, check that `set-trusted-forwarder` was run on the target chain.
-- **LayerZero Endpoints**: Ensure you are using the correct Endpoint IDs for your networks.
-  - ZKsync Era Sepolia: `40305`
-  - Base Sepolia: `40245`
-
-## 📄 License
-
-MIT
+`ZKSYNC_RPC_URL` is retained as a backward-compatible service env name. Set it
+to the RPC URL for whichever EVM hub chain you deploy `HubInboundInbox` on.

@@ -1,5 +1,10 @@
 {
   "name": "hardhat-project",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "typecheck": "tsc --noEmit"
+  },
   "devDependencies": {
     "@layerzerolabs/lz-v2-utilities": "^3.0.61",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",

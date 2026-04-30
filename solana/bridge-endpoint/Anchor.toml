@@ -1,0 +1,19 @@
+[toolchain]
+anchor_version = "0.32.1"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.localnet]
+bridge_endpoint = "H4bMLhY9L8rB8kQrMbSeyy2KbQ2CYQnSvxqPro6vsy4J"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "Localnet"
+wallet = "target/test-wallet.json"
+
+[scripts]
+test = "npm run test:anchor"
