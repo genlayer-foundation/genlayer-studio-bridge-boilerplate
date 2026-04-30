@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smart-contracts:
+    name: Smart Contracts
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smart-contracts
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: smart-contracts/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  service:
+    name: Relay Service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+  solana-bridge-endpoint:
+    name: Solana Bridge Endpoint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solana/bridge-endpoint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: solana/bridge-endpoint/package-lock.json
+
+      - name: Install Anchor and Solana
+        shell: bash
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL https://solana-install.solana.workers.dev | bash
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Solana toolchain
+        run: |
+          rustc --version
+          anchor --version
+          solana --version
+          solana-test-validator --version
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            solana/bridge-endpoint/target
+          key: solana-${{ runner.os }}-${{ hashFiles('solana/bridge-endpoint/Cargo.lock') }}
+          restore-keys: |
+            solana-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rust tests
+        run: cargo test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Anchor validator tests
+        run: npm test

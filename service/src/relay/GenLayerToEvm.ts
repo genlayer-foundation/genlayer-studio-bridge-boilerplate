@@ -1,8 +1,8 @@
 /**
- * GenLayer -> EVM Relay
+ * GenLayer -> destination relay
  *
- * Polls GenLayer BridgeSender for pending messages and relays them
- * via zkSync BridgeForwarder to destination EVM chains.
+ * Polls GenLayerOutbox for pending messages and relays them
+ * via the zkSync HubOutboundRouter to destination chains.
  */
 
 import { ethers } from "ethers";
@@ -17,14 +17,14 @@ import {
   getGenlayerRpcUrl,
   getPrivateKey,
 } from "../config.js";
+import { mapValue, toHexBytes } from "../codec.js";
 
 interface BridgeMessage {
-  targetChainId: number;
-  targetContract: string;
-  data: string;
+  dstEid: number;
+  encodedMessage: string;
 }
 
-const BRIDGE_FORWARDER_ABI = [
+const HUB_OUTBOUND_ROUTER_ABI = [
   "function callRemoteArbitrary(bytes32 txHash, uint32 dstEid, bytes data, bytes options) external payable",
   "function quoteCallRemoteArbitrary(uint32 dstEid, bytes data, bytes options) external view returns (uint256 nativeFee, uint256 lzTokenFee)",
   "function isHashUsed(bytes32 txHash) external view returns (bool)",
@@ -43,7 +43,7 @@ export class GenLayerToEvmRelay {
 
     this.bridgeForwarder = new ethers.Contract(
       getBridgeForwarderAddress(),
-      BRIDGE_FORWARDER_ABI,
+      HUB_OUTBOUND_ROUTER_ABI,
       this.wallet
     );
 
@@ -106,25 +106,19 @@ export class GenLayerToEvmRelay {
           stateStatus: "accepted",
         });
 
-      // Convert data to hex
-      let messageData = messageResponse.get("data");
-      if (messageData instanceof Uint8Array || Buffer.isBuffer(messageData)) {
-        messageData = "0x" + Buffer.from(messageData).toString("hex");
-      } else if (
-        typeof messageData === "string" &&
-        !messageData.startsWith("0x")
-      ) {
-        messageData = "0x" + messageData;
-      }
-
       const message: BridgeMessage = {
-        targetChainId: Number(messageResponse.get("target_chain_id")),
-        targetContract: messageResponse.get("target_contract"),
-        data: messageData,
+        dstEid: Number(
+          mapValue(messageResponse, "dst_eid")
+            ?? mapValue(messageResponse, "target_chain_id")
+        ),
+        encodedMessage: toHexBytes(
+          mapValue(messageResponse, "encoded_message")
+            ?? mapValue(messageResponse, "data")
+        ),
       };
 
       console.log(
-        `[GL→EVM] Relaying to chain ${message.targetChainId}/${message.targetContract}`
+        `[GL→EVM] Relaying to destination EID ${message.dstEid}`
       );
 
       // Build LayerZero options
@@ -133,10 +127,10 @@ export class GenLayerToEvmRelay {
         .toHex();
 
       // Get fee quote
-      const dstEid = message.targetChainId; // Already LZ EID
+      const dstEid = message.dstEid;
       const [nativeFee] = await this.bridgeForwarder.quoteCallRemoteArbitrary(
         dstEid,
-        message.data,
+        message.encodedMessage,
         optionsHex
       );
 
@@ -148,7 +142,7 @@ export class GenLayerToEvmRelay {
       const tx = await this.bridgeForwarder.callRemoteArbitrary(
         `0x${hash}`,
         dstEid,
-        message.data,
+        message.encodedMessage,
         optionsHex,
         { value: nativeFee }
       );

@@ -8,13 +8,15 @@ pragma solidity ^0.8.20;
 interface IGenLayerBridgeReceiver {
     /**
      * @notice Process a bridged message from GenLayer
-     * @param _sourceChainId The chain ID of the source chain
-     * @param _sourceContract The address of the source contract
+     * @param _messageId Unique bridge message ID
+     * @param _sourceEid Source endpoint/application EID
+     * @param _sourceSender Source sender encoded as bytes32
      * @param _message The encoded message data to process
      */
     function processBridgeMessage(
-        uint32 _sourceChainId,
-        address _sourceContract,
+        bytes32 _messageId,
+        uint32 _sourceEid,
+        bytes32 _sourceSender,
         bytes calldata _message
     ) external;
 }

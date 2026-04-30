@@ -5,16 +5,20 @@ import { Options } from "@layerzerolabs/lz-v2-utilities";
 dotenv.config();
 
 async function main() {
-  const senderAddress = process.env.BRIDGE_SENDER_ADDRESS;
+  const senderAddress = process.env.EVM_CHAIN_OUTBOX_ADDRESS || process.env.BRIDGE_SENDER_ADDRESS;
   
   if (!senderAddress) {
-    throw new Error("Missing BRIDGE_SENDER_ADDRESS in .env");
+    throw new Error("Missing EVM_CHAIN_OUTBOX_ADDRESS or BRIDGE_SENDER_ADDRESS in .env");
   }
 
   const [signer] = await ethers.getSigners();
   console.log("Signer:", signer.address);
 
-  const sender = await ethers.getContractAt("BridgeSender", senderAddress, signer);
+  const sender = await ethers.getContractAt(
+    process.env.EVM_CHAIN_OUTBOX_ADDRESS ? "EvmChainOutbox" : "BridgeSender",
+    senderAddress,
+    signer
+  );
 
   // Target contract on GenLayer (StringReceiverIC)
   const targetContract = process.env.TARGET_CONTRACT;
@@ -41,6 +45,9 @@ async function main() {
   console.log("TX:", tx.hash);
 
   const receipt = await tx.wait();
+  if (!receipt) {
+    throw new Error("Transaction was not mined");
+  }
   console.log("Message sent successfully!");
   
   // Find the MessageSentToGenLayer event
@@ -65,4 +72,3 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-

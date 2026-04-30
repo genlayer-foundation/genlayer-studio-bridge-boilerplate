@@ -5,22 +5,27 @@
  *   ACTION=<action> npx hardhat run scripts/configure.ts --network <network>
  *
  * Actions:
- *   set-trusted-forwarder - Add trusted forwarder to BridgeReceiver
- *   set-authorized-relayer - Add authorized relayer to BridgeReceiver
- *   set-bridge-address - Set destination bridge on BridgeForwarder
- *   set-sender-receiver - Update zkSync receiver on BridgeSender
+ *   set-trusted-source - Add trusted source endpoint to HubInboundInbox
+ *   set-authorized-relayer - Add authorized relayer to HubInboundInbox
+ *   set-destination-endpoint - Set destination endpoint on HubOutboundRouter
+ *   set-hub-inbox - Update hub inbox on EvmChainOutbox
+ *   set-trusted-hub-router - Add trusted hub router to EvmChainInbox
  *
  * Required env vars vary by action (see usage info below).
  */
 
-import { getEnvVar, getEnvVarOrDefault, validateAddress, addressToBytes32, getContract } from "./utils";
+import { getEnvVar, getEnvVarOrDefault, validateAddress, addressToBytes32, peerToBytes32, getContract } from "./utils";
 import { ethers } from "hardhat";
 
 type ConfigAction =
   | "set-trusted-forwarder"
+  | "set-trusted-source"
   | "set-authorized-relayer"
   | "set-bridge-address"
-  | "set-sender-receiver";
+  | "set-destination-endpoint"
+  | "set-sender-receiver"
+  | "set-hub-inbox"
+  | "set-trusted-hub-router";
 
 // ============================================================================
 // Configuration Actions
@@ -53,22 +58,45 @@ async function setTrustedForwarder() {
   console.log("  ✓ Trusted forwarder set successfully");
 }
 
+async function setTrustedSource() {
+  const inboxAddress = getEnvVar("HUB_INBOUND_INBOX_ADDRESS");
+  const sourceEndpoint = getEnvVar("TRUSTED_SOURCE_ENDPOINT_ADDRESS");
+  const srcEid = parseInt(getEnvVar("SRC_EID"));
+
+  validateAddress(inboxAddress, "HUB_INBOUND_INBOX_ADDRESS");
+  console.log("\nSetting trusted source endpoint on HubInboundInbox");
+  console.log("  Inbox:", inboxAddress);
+  console.log("  Source Endpoint:", sourceEndpoint);
+  console.log("  Source EID:", srcEid);
+
+  const inbox = await getContract("HubInboundInbox", inboxAddress);
+  const sourceBytes32 = peerToBytes32(sourceEndpoint);
+
+  const tx = await inbox.setTrustedSourceEndpoint(srcEid, sourceBytes32);
+  console.log("  TX:", tx.hash);
+  await tx.wait();
+  console.log("  ✓ Trusted source endpoint set successfully");
+}
+
 /**
  * Set authorized relayer on BridgeReceiver
  * Required env: BRIDGE_RECEIVER_ADDRESS, RELAYER_ADDRESS (or uses OWNER_ADDRESS)
  */
 async function setAuthorizedRelayer() {
-  const receiverAddress = getEnvVar("BRIDGE_RECEIVER_ADDRESS");
+  const receiverAddress = getEnvVarOrDefault("HUB_INBOUND_INBOX_ADDRESS", process.env.BRIDGE_RECEIVER_ADDRESS || "");
   const relayerAddress = getEnvVarOrDefault("RELAYER_ADDRESS", process.env.OWNER_ADDRESS || "");
 
   validateAddress(receiverAddress, "BRIDGE_RECEIVER_ADDRESS");
   validateAddress(relayerAddress, "RELAYER_ADDRESS");
 
-  console.log("\nSetting authorized relayer on BridgeReceiver");
+  console.log("\nSetting authorized relayer on inbound inbox");
   console.log("  Receiver:", receiverAddress);
   console.log("  Relayer:", relayerAddress);
 
-  const receiver = await getContract("BridgeReceiver", receiverAddress);
+  const receiver = await getContract(
+    process.env.HUB_INBOUND_INBOX_ADDRESS ? "HubInboundInbox" : "BridgeReceiver",
+    receiverAddress
+  );
 
   const tx = await receiver.setAuthorizedRelayer(relayerAddress, true);
   console.log("  TX:", tx.hash);
@@ -105,6 +133,26 @@ async function setBridgeAddress() {
 
   await tx.wait();
   console.log("  ✓ Bridge address set successfully");
+}
+
+async function setDestinationEndpoint() {
+  const routerAddress = getEnvVar("HUB_OUTBOUND_ROUTER_ADDRESS");
+  const dstEid = parseInt(getEnvVar("DST_EID"));
+  const dstEndpointAddress = getEnvVar("DST_ENDPOINT_ADDRESS");
+
+  validateAddress(routerAddress, "HUB_OUTBOUND_ROUTER_ADDRESS");
+  console.log("\nSetting destination endpoint on HubOutboundRouter");
+  console.log("  Router:", routerAddress);
+  console.log("  Destination EID:", dstEid);
+  console.log("  Destination Endpoint:", dstEndpointAddress);
+
+  const router = await getContract("HubOutboundRouter", routerAddress);
+  const endpointBytes32 = peerToBytes32(dstEndpointAddress);
+
+  const tx = await router.setDestinationEndpoint(dstEid, endpointBytes32);
+  console.log("  TX:", tx.hash);
+  await tx.wait();
+  console.log("  ✓ Destination endpoint set successfully");
 }
 
 /**
@@ -144,6 +192,48 @@ async function setSenderReceiver() {
   console.log("  ✓ Updated (verified:", newReceiver, ")");
 }
 
+async function setHubInbox() {
+  const outboxAddress = getEnvVar("EVM_CHAIN_OUTBOX_ADDRESS");
+  const hubInboxAddress = getEnvVar("HUB_INBOUND_INBOX_ADDRESS");
+  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40305"));
+
+  validateAddress(outboxAddress, "EVM_CHAIN_OUTBOX_ADDRESS");
+  validateAddress(hubInboxAddress, "HUB_INBOUND_INBOX_ADDRESS");
+
+  console.log("\nUpdating hub inbox on EvmChainOutbox");
+  console.log("  Outbox:", outboxAddress);
+  console.log("  Hub EID:", hubEid);
+  console.log("  HubInboundInbox:", hubInboxAddress);
+
+  const outbox = await getContract("EvmChainOutbox", outboxAddress);
+  const inboxBytes32 = addressToBytes32(hubInboxAddress);
+  const tx = await outbox.setHubInboundInbox(hubEid, inboxBytes32);
+  console.log("  TX:", tx.hash);
+  await tx.wait();
+  console.log("  ✓ Hub inbox updated successfully");
+}
+
+async function setTrustedHubRouter() {
+  const inboxAddress = getEnvVar("EVM_CHAIN_INBOX_ADDRESS");
+  const hubRouterAddress = getEnvVar("HUB_OUTBOUND_ROUTER_ADDRESS");
+  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40305"));
+
+  validateAddress(inboxAddress, "EVM_CHAIN_INBOX_ADDRESS");
+  validateAddress(hubRouterAddress, "HUB_OUTBOUND_ROUTER_ADDRESS");
+
+  console.log("\nSetting trusted hub router on EvmChainInbox");
+  console.log("  Inbox:", inboxAddress);
+  console.log("  Hub EID:", hubEid);
+  console.log("  HubOutboundRouter:", hubRouterAddress);
+
+  const inbox = await getContract("EvmChainInbox", inboxAddress);
+  const routerBytes32 = addressToBytes32(hubRouterAddress);
+  const tx = await inbox.setTrustedHubRouter(hubEid, routerBytes32);
+  console.log("  TX:", tx.hash);
+  await tx.wait();
+  console.log("  ✓ Trusted hub router set successfully");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -151,6 +241,9 @@ async function setSenderReceiver() {
 function printUsage() {
   console.log("Usage: ACTION=<action> npx hardhat run scripts/configure.ts --network <network>");
   console.log("\nActions:");
+  console.log("  set-trusted-source     - Add trusted source endpoint to HubInboundInbox");
+  console.log("    Env: HUB_INBOUND_INBOX_ADDRESS, TRUSTED_SOURCE_ENDPOINT_ADDRESS, SRC_EID");
+  console.log("");
   console.log("  set-trusted-forwarder  - Add trusted forwarder to BridgeReceiver");
   console.log("    Env: BRIDGE_RECEIVER_ADDRESS, TRUSTED_FORWARDER_ADDRESS, SRC_EID");
   console.log("");
@@ -160,8 +253,17 @@ function printUsage() {
   console.log("  set-bridge-address     - Set destination bridge on BridgeForwarder");
   console.log("    Env: BRIDGE_FORWARDER_ADDRESS, DST_EID, DST_BRIDGE_ADDRESS");
   console.log("");
+  console.log("  set-destination-endpoint - Set destination endpoint on HubOutboundRouter");
+  console.log("    Env: HUB_OUTBOUND_ROUTER_ADDRESS, DST_EID, DST_ENDPOINT_ADDRESS");
+  console.log("");
   console.log("  set-sender-receiver    - Update zkSync receiver on BridgeSender");
   console.log("    Env: BRIDGE_SENDER_ADDRESS, ZKSYNC_BRIDGE_RECEIVER_ADDRESS, ZKSYNC_EID");
+  console.log("");
+  console.log("  set-hub-inbox          - Update hub inbox on EvmChainOutbox");
+  console.log("    Env: EVM_CHAIN_OUTBOX_ADDRESS, HUB_INBOUND_INBOX_ADDRESS, HUB_EID");
+  console.log("");
+  console.log("  set-trusted-hub-router - Add trusted hub router to EvmChainInbox");
+  console.log("    Env: EVM_CHAIN_INBOX_ADDRESS, HUB_OUTBOUND_ROUTER_ADDRESS, HUB_EID");
 }
 
 async function main() {
@@ -179,14 +281,26 @@ async function main() {
     case "set-trusted-forwarder":
       await setTrustedForwarder();
       break;
+    case "set-trusted-source":
+      await setTrustedSource();
+      break;
     case "set-authorized-relayer":
       await setAuthorizedRelayer();
       break;
     case "set-bridge-address":
       await setBridgeAddress();
       break;
+    case "set-destination-endpoint":
+      await setDestinationEndpoint();
+      break;
     case "set-sender-receiver":
       await setSenderReceiver();
+      break;
+    case "set-hub-inbox":
+      await setHubInbox();
+      break;
+    case "set-trusted-hub-router":
+      await setTrustedHubRouter();
       break;
     default:
       console.error(`Unknown action: ${action}`);

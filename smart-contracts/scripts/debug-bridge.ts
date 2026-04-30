@@ -24,7 +24,7 @@ async function main() {
     }
     
     // Handle different JSON structures
-    const contractAddress = deployment.address || deployment.bridgeSender;
+    const contractAddress = deployment.address || (deployment as any).bridgeSender;
     if (!contractAddress) {
        console.error("Could not find address in deployment file:", deployment);
        return;
@@ -71,7 +71,7 @@ async function main() {
     }
     
     // Handle different JSON structures
-    const contractAddress = deployment.address || deployment.bridgeReceiver;
+    const contractAddress = deployment.address || (deployment as any).bridgeReceiver;
     if (!contractAddress) {
        console.error("Could not find address in deployment file:", deployment);
        return;
@@ -115,4 +115,3 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-

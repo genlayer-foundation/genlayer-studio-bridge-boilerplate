@@ -17,6 +17,8 @@ env/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*.local
+.testnet-keys/
 
 # General
 .DS_Store
@@ -32,6 +34,8 @@ Thumbs.db
 # Build artifacts (general)
 dist/
 build/
+target/
+.anchor/
 coverage/
 coverage.json
 
@@ -41,4 +45,3 @@ cache/
 deployments/
 typechain-types/
 typechain/
-
