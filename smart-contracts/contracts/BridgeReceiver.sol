@@ -29,6 +29,7 @@ contract BridgeReceiver is ILayerZeroReceiver, Ownable, ReentrancyGuard {
     mapping(bytes32 => GenLayerMessage) public genLayerMessages;
     bytes32[] public genLayerMessageIds;
     mapping(address => bool) public authorizedRelayers;
+    bool public dispatchMessages;
 
     event TrustedForwarderSet(uint32 indexed remoteEid, bytes32 indexed remoteForwarder);
     event TrustedForwarderRemoved(uint32 indexed remoteEid, bytes32 indexed remoteForwarder);
@@ -106,6 +107,14 @@ contract BridgeReceiver is ILayerZeroReceiver, Ownable, ReentrancyGuard {
         genLayerMessageIds.push(messageId);
 
         emit MessageForGenLayer(messageId, srcChainId, srcSender, targetContract, data);
+
+        if (dispatchMessages) {
+            IGenLayerBridgeReceiver(targetContract).processBridgeMessage(
+                srcChainId,
+                srcSender,
+                data
+            );
+        }
     }
 
     // Relayer Management
@@ -114,6 +123,10 @@ contract BridgeReceiver is ILayerZeroReceiver, Ownable, ReentrancyGuard {
         require(_relayer != address(0), "BridgeReceiver: _relayer=0");
         authorizedRelayers[_relayer] = _authorized;
         emit AuthorizedRelayerSet(_relayer, _authorized);
+    }
+
+    function setDispatchMessages(bool _enabled) external onlyOwner {
+        dispatchMessages = _enabled;
     }
 
     // Message Polling

@@ -20,6 +20,7 @@ type ConfigAction =
   | "set-trusted-forwarder"
   | "set-authorized-relayer"
   | "set-bridge-address"
+  | "set-dispatch"
   | "set-sender-receiver";
 
 // ============================================================================
@@ -107,6 +108,17 @@ async function setBridgeAddress() {
   console.log("  ✓ Bridge address set successfully");
 }
 
+async function setDispatch() {
+  const receiverAddress = getEnvVar("BRIDGE_RECEIVER_ADDRESS");
+  const enabled = (process.env.DISPATCH_MESSAGES || "true").toLowerCase() === "true";
+  validateAddress(receiverAddress, "BRIDGE_RECEIVER_ADDRESS");
+  const receiver = await getContract("BridgeReceiver", receiverAddress);
+  const tx = await receiver.setDispatchMessages(enabled);
+  console.log("  TX:", tx.hash);
+  await tx.wait();
+  console.log("  Dispatch enabled:", await receiver.dispatchMessages());
+}
+
 /**
  * Update zkSync bridge receiver on BridgeSender
  * Required env: BRIDGE_SENDER_ADDRESS, ZKSYNC_BRIDGE_RECEIVER_ADDRESS, ZKSYNC_EID (default 40305)
@@ -184,6 +196,9 @@ async function main() {
       break;
     case "set-bridge-address":
       await setBridgeAddress();
+      break;
+    case "set-dispatch":
+      await setDispatch();
       break;
     case "set-sender-receiver":
       await setSenderReceiver();
