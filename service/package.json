@@ -7,7 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "node --loader ts-node/esm src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --loader ts-node/esm --test src/relay/message.test.ts"
   },
   "keywords": [],
   "author": "",
@@ -16,7 +16,7 @@
     "@layerzerolabs/lz-v2-utilities": "^3.0.61",
     "dotenv": "^16.4.5",
     "ethers": "^6.11.1",
-    "genlayer-js": "^0.18.4",
+    "genlayer-js": "^1.1.8",
     "i": "^0.3.7",
     "node-cron": "^3.0.3"
   },

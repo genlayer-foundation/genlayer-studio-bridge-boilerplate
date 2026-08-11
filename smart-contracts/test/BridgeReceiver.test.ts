@@ -201,31 +201,26 @@ describe("BridgeReceiver", function () {
       ).to.be.revertedWith("BridgeReceiver: untrusted forwarder");
     });
 
-    it("Should revert if localContract is zero address", async function () {
+    it("Should reject an incorrect target when dispatch is enabled", async function () {
       const message = ethers.AbiCoder.defaultAbiCoder().encode(
         ["uint32", "address", "address", "bytes"],
         [remoteEid, owner.address, ethers.ZeroAddress, "0x"]
       );
 
-      await expect(
-        mockEndpointWithReceive.callLzReceive(
-          await bridgeReceiver.getAddress(),
-          origin,
-          guid,
-          message,
-          executor.address,
-          extraData
-        )
-      ).to.be.revertedWith("BridgeReceiver: localContract=0");
+      await bridgeReceiver.connect(owner).setDispatchMessages(true);
+      await expect(mockEndpointWithReceive.callLzReceive(
+        await bridgeReceiver.getAddress(), origin, guid, message, executor.address, extraData
+      )).to.be.reverted;
     });
 
-    it("Should successfully forward the call to local contract", async function () {
+    it("Should dispatch to the configured application target when enabled", async function () {
       const testMessage = "0x1234";
       const message = ethers.AbiCoder.defaultAbiCoder().encode(
         ["uint32", "address", "address", "bytes"],
         [remoteEid, owner.address, await mockTarget.getAddress(), testMessage]
       );
 
+      await bridgeReceiver.connect(owner).setDispatchMessages(true);
       await mockEndpointWithReceive.callLzReceive(
         await bridgeReceiver.getAddress(),
         origin,
@@ -241,25 +236,17 @@ describe("BridgeReceiver", function () {
       expect(await mockTarget.lastMessage()).to.equal(testMessage);
     });
 
-    it("Should emit ForwardCallSuccess event", async function () {
+    it("Should store the packet while dispatch is disabled", async function () {
       const testMessage = "0x1234";
       const message = ethers.AbiCoder.defaultAbiCoder().encode(
         ["uint32", "address", "address", "bytes"],
         [remoteEid, owner.address, await mockTarget.getAddress(), testMessage]
       );
 
-      await expect(
-        mockEndpointWithReceive.callLzReceive(
-          await bridgeReceiver.getAddress(),
-          origin,
-          guid,
-          message,
-          executor.address,
-          extraData
-        )
-      )
-        .to.emit(bridgeReceiver, "ForwardCallSuccess")
-        .withArgs(origin.srcEid, origin.sender, await mockTarget.getAddress(), testMessage);
+      await mockEndpointWithReceive.callLzReceive(
+        await bridgeReceiver.getAddress(), origin, guid, message, executor.address, extraData
+      );
+      expect(await bridgeReceiver.getGenLayerMessageCount()).to.equal(1);
     });
   });
 }); 

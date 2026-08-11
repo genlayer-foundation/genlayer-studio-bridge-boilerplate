@@ -17,14 +17,18 @@ import {
   getGenlayerRpcUrl,
   getPrivateKey,
 } from "../config.js";
+import {
+  normalizeMessageHash,
+  readMessageField,
+  shouldRememberRelayedHash,
+} from "./message.js";
+import type { MessageResponse } from "./message.js";
 
 interface BridgeMessage {
   targetChainId: number;
   targetContract: string;
   data: string;
 }
-
-type MessageResponse = Map<string, unknown> | Record<string, unknown>;
 
 const BRIDGE_FORWARDER_ABI = [
   "function callRemoteArbitrary(bytes32 txHash, uint32 dstEid, bytes data, bytes options) external payable",
@@ -80,7 +84,7 @@ export class GenLayerToEvmRelay {
       }
 
       return response.filter((hash): hash is string => {
-        const normalized = hash.replace(/^0x/, "").toLowerCase();
+      const normalized = normalizeMessageHash(hash);
         return !this.usedHashes.has(normalized);
       });
     } catch (error) {
@@ -91,7 +95,7 @@ export class GenLayerToEvmRelay {
 
   private async relayMessage(hash: string): Promise<boolean> {
     try {
-      const normalizedHash = hash.replace(/^0x/, "").toLowerCase();
+      const normalizedHash = normalizeMessageHash(hash);
       console.log(`[GL→EVM] Processing message ${normalizedHash}`);
 
       // Check if already relayed
@@ -110,13 +114,8 @@ export class GenLayerToEvmRelay {
           stateStatus: "accepted",
         });
 
-      const readField = (name: string): unknown =>
-        messageResponse instanceof Map
-          ? messageResponse.get(name)
-          : messageResponse[name];
-
       // Convert data to hex
-      let messageData = readField("data");
+      let messageData = readMessageField(messageResponse, "data");
       if (messageData instanceof Uint8Array || Buffer.isBuffer(messageData)) {
         messageData = "0x" + Buffer.from(messageData).toString("hex");
       } else if (typeof messageData === "string" && !messageData.startsWith("0x")) {
@@ -127,8 +126,8 @@ export class GenLayerToEvmRelay {
         throw new Error("GenLayer message data is not bytes-like");
       }
 
-      const targetChainId = Number(readField("target_chain_id"));
-      const targetContract = readField("target_contract");
+      const targetChainId = Number(readMessageField(messageResponse, "target_chain_id"));
+      const targetContract = readMessageField(messageResponse, "target_contract");
       if (!Number.isInteger(targetChainId) || typeof targetContract !== "string") {
         throw new Error("GenLayer message has invalid target fields");
       }
@@ -187,9 +186,9 @@ export class GenLayerToEvmRelay {
       console.log(`[GL→EVM] Found ${hashes.length} messages`);
 
       for (const hash of hashes) {
-        const normalizedHash = hash.replace(/^0x/, "").toLowerCase();
+        const normalizedHash = normalizeMessageHash(hash);
         const relayed = await this.relayMessage(hash);
-        if (relayed) {
+        if (shouldRememberRelayedHash(relayed)) {
           this.usedHashes.add(normalizedHash);
         }
       }
