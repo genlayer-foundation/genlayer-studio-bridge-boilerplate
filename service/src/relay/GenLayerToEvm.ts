@@ -7,7 +7,7 @@
 
 import { ethers } from "ethers";
 import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { testnetBradbury } from "genlayer-js/chains";
 import type { Address } from "genlayer-js/types";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
@@ -23,6 +23,8 @@ interface BridgeMessage {
   targetContract: string;
   data: string;
 }
+
+type MessageResponse = Map<string, unknown> | Record<string, unknown>;
 
 const BRIDGE_FORWARDER_ABI = [
   "function callRemoteArbitrary(bytes32 txHash, uint32 dstEid, bytes data, bytes options) external payable",
@@ -52,7 +54,7 @@ export class GenLayerToEvmRelay {
     const account = createAccount(`0x${privateKey.replace(/^0x/, "")}`);
     this.genLayerClient = createClient({
       chain: {
-        ...studionet,
+        ...testnetBradbury,
         rpcUrls: {
           default: { http: [getGenlayerRpcUrl()] },
         },
@@ -77,28 +79,30 @@ export class GenLayerToEvmRelay {
         return [];
       }
 
-      return response.filter(
-        (hash): hash is string => !this.usedHashes.has(hash)
-      );
+      return response.filter((hash): hash is string => {
+        const normalized = hash.replace(/^0x/, "").toLowerCase();
+        return !this.usedHashes.has(normalized);
+      });
     } catch (error) {
       console.error("Error fetching messages:", error);
       return [];
     }
   }
 
-  private async relayMessage(hash: string): Promise<void> {
+  private async relayMessage(hash: string): Promise<boolean> {
     try {
-      console.log(`[GL→EVM] Processing message ${hash}`);
+      const normalizedHash = hash.replace(/^0x/, "").toLowerCase();
+      console.log(`[GL→EVM] Processing message ${normalizedHash}`);
 
       // Check if already relayed
-      const isUsed = await this.bridgeForwarder.isHashUsed(`0x${hash}`);
+      const isUsed = await this.bridgeForwarder.isHashUsed(`0x${normalizedHash}`);
       if (isUsed) {
-        console.log(`[GL→EVM] Message ${hash} already relayed, skipping`);
-        return;
+        console.log(`[GL→EVM] Message ${normalizedHash} already relayed, skipping`);
+        return true;
       }
 
       // Get message from GenLayer
-      const messageResponse: Map<string, any> =
+      const messageResponse: MessageResponse =
         await this.genLayerClient.readContract({
           address: getBridgeSenderAddress() as Address,
           functionName: "get_message",
@@ -106,20 +110,32 @@ export class GenLayerToEvmRelay {
           stateStatus: "accepted",
         });
 
+      const readField = (name: string): unknown =>
+        messageResponse instanceof Map
+          ? messageResponse.get(name)
+          : messageResponse[name];
+
       // Convert data to hex
-      let messageData = messageResponse.get("data");
+      let messageData = readField("data");
       if (messageData instanceof Uint8Array || Buffer.isBuffer(messageData)) {
         messageData = "0x" + Buffer.from(messageData).toString("hex");
-      } else if (
-        typeof messageData === "string" &&
-        !messageData.startsWith("0x")
-      ) {
+      } else if (typeof messageData === "string" && !messageData.startsWith("0x")) {
         messageData = "0x" + messageData;
       }
 
+      if (typeof messageData !== "string") {
+        throw new Error("GenLayer message data is not bytes-like");
+      }
+
+      const targetChainId = Number(readField("target_chain_id"));
+      const targetContract = readField("target_contract");
+      if (!Number.isInteger(targetChainId) || typeof targetContract !== "string") {
+        throw new Error("GenLayer message has invalid target fields");
+      }
+
       const message: BridgeMessage = {
-        targetChainId: Number(messageResponse.get("target_chain_id")),
-        targetContract: messageResponse.get("target_contract"),
+        targetChainId,
+        targetContract,
         data: messageData,
       };
 
@@ -146,7 +162,7 @@ export class GenLayerToEvmRelay {
 
       // Send via LayerZero
       const tx = await this.bridgeForwarder.callRemoteArbitrary(
-        `0x${hash}`,
+        `0x${normalizedHash}`,
         dstEid,
         message.data,
         optionsHex,
@@ -156,8 +172,10 @@ export class GenLayerToEvmRelay {
       console.log(`[GL→EVM] TX: ${tx.hash}`);
       const receipt = await tx.wait();
       console.log(`[GL→EVM] Confirmed in block ${receipt.blockNumber}`);
+      return true;
     } catch (error) {
       console.error(`[GL→EVM] Error relaying ${hash}:`, error);
+      return false;
     }
   }
 
@@ -169,8 +187,11 @@ export class GenLayerToEvmRelay {
       console.log(`[GL→EVM] Found ${hashes.length} messages`);
 
       for (const hash of hashes) {
-        this.usedHashes.add(hash);
-        await this.relayMessage(hash);
+        const normalizedHash = hash.replace(/^0x/, "").toLowerCase();
+        const relayed = await this.relayMessage(hash);
+        if (relayed) {
+          this.usedHashes.add(normalizedHash);
+        }
       }
 
       console.log("[GL→EVM] Sync complete");
