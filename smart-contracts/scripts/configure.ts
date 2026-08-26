@@ -109,15 +109,15 @@ async function setBridgeAddress() {
 
 /**
  * Update zkSync bridge receiver on BridgeSender
- * Required env: BRIDGE_SENDER_ADDRESS, ZKSYNC_BRIDGE_RECEIVER_ADDRESS, ZKSYNC_EID (default 40305)
+ * Required env: BRIDGE_SENDER_ADDRESS, HUB_BRIDGE_RECEIVER_ADDRESS, DESTINATION_LAYERZERO_EID
  */
 async function setSenderReceiver() {
   const senderAddress = getEnvVar("BRIDGE_SENDER_ADDRESS");
-  const zkSyncReceiverAddress = getEnvVar("ZKSYNC_BRIDGE_RECEIVER_ADDRESS");
-  const zkSyncEid = parseInt(getEnvVarOrDefault("ZKSYNC_EID", "40305"));
+  const zkSyncReceiverAddress = getEnvVar("HUB_BRIDGE_RECEIVER_ADDRESS");
+  const zkSyncEid = parseInt(getEnvVar("DESTINATION_LAYERZERO_EID"), 10);
 
   validateAddress(senderAddress, "BRIDGE_SENDER_ADDRESS");
-  validateAddress(zkSyncReceiverAddress, "ZKSYNC_BRIDGE_RECEIVER_ADDRESS");
+  validateAddress(zkSyncReceiverAddress, "HUB_BRIDGE_RECEIVER_ADDRESS");
 
   console.log("\nUpdating zkSync receiver on BridgeSender");
   console.log("  Sender:", senderAddress);
@@ -161,7 +161,7 @@ function printUsage() {
   console.log("    Env: BRIDGE_FORWARDER_ADDRESS, DST_EID, DST_BRIDGE_ADDRESS");
   console.log("");
   console.log("  set-sender-receiver    - Update zkSync receiver on BridgeSender");
-  console.log("    Env: BRIDGE_SENDER_ADDRESS, ZKSYNC_BRIDGE_RECEIVER_ADDRESS, ZKSYNC_EID");
+  console.log("    Env: BRIDGE_SENDER_ADDRESS, HUB_BRIDGE_RECEIVER_ADDRESS, DESTINATION_LAYERZERO_EID");
 }
 
 async function main() {

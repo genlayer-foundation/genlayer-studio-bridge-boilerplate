@@ -2,7 +2,7 @@ import { ethers } from "hardhat";
 import { 
   getContract, 
   loadDeployment, 
-  LAYER_ZERO_EIDS, 
+  getEnvVar,
   addressToBytes32,
   getNetworkInfo 
 } from "./utils";
@@ -24,7 +24,7 @@ async function main() {
     }
     
     // Handle different JSON structures
-    const contractAddress = deployment.address || deployment.bridgeSender;
+    const contractAddress = deployment.address;
     if (!contractAddress) {
        console.error("Could not find address in deployment file:", deployment);
        return;
@@ -39,9 +39,10 @@ async function main() {
 
     console.log("\nConfiguration:");
     console.log(`- Configured Destination EID: ${zkSyncEid}`);
-    console.log(`- Expected zkSync Sepolia EID: ${LAYER_ZERO_EIDS.zkSyncSepolia}`);
+    const expectedDestinationEid = Number(getEnvVar("DESTINATION_LAYERZERO_EID"));
+    console.log(`- Expected destination EID: ${expectedDestinationEid}`);
     
-    if (Number(zkSyncEid) !== LAYER_ZERO_EIDS.zkSyncSepolia) {
+    if (Number(zkSyncEid) !== expectedDestinationEid) {
       console.warn("⚠️  MISMATCH: zkSync EID is incorrect!");
     } else {
       console.log("✅ zkSync EID matches.");
@@ -71,7 +72,7 @@ async function main() {
     }
     
     // Handle different JSON structures
-    const contractAddress = deployment.address || deployment.bridgeReceiver;
+    const contractAddress = deployment.address;
     if (!contractAddress) {
        console.error("Could not find address in deployment file:", deployment);
        return;
@@ -81,15 +82,15 @@ async function main() {
     const bridgeReceiver = await getContract("BridgeReceiver", contractAddress);
 
     // Check Trusted Forwarder for Base Sepolia
-    const srcEid = LAYER_ZERO_EIDS.baseSepolia;
+    const srcEid = Number(getEnvVar("SOURCE_LAYERZERO_EID"));
     const trustedForwarder = await bridgeReceiver.trustedForwarders(srcEid);
 
     console.log("\nConfiguration:");
-    console.log(`- Checking Trusted Forwarder for Base Sepolia EID (${srcEid})`);
+    console.log(`- Checking Trusted Forwarder for source EID (${srcEid})`);
     console.log(`- Configured Forwarder: ${trustedForwarder}`);
 
     if (trustedForwarder === ethers.ZeroHash) {
-      console.error("❌ NO TRUSTED FORWARDER SET for Base Sepolia!");
+      console.error("❌ NO TRUSTED FORWARDER SET for the configured source EID!");
       console.log("   To fix: Set the BridgeSender address from Base as the trusted forwarder.");
     } else {
       console.log("✅ Trusted forwarder is set.");
@@ -107,7 +108,7 @@ async function main() {
     }
   } 
   else {
-    console.log("Unknown network for debugging. Please run on baseSepoliaTestnet or zkSyncSepoliaTestnet.");
+    console.log("Unknown network for debugging. Use a configured hub or target network profile.");
   }
 }
 
@@ -115,4 +116,3 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-

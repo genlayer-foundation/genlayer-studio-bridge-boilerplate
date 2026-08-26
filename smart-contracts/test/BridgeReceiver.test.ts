@@ -201,29 +201,31 @@ describe("BridgeReceiver", function () {
       ).to.be.revertedWith("BridgeReceiver: untrusted forwarder");
     });
 
-    it("Should revert if localContract is zero address", async function () {
+    it("Should store a message with a zero target for relay-side validation", async function () {
+      const messageId = ethers.hexlify(ethers.randomBytes(32));
       const message = ethers.AbiCoder.defaultAbiCoder().encode(
-        ["uint32", "address", "address", "bytes"],
-        [remoteEid, owner.address, ethers.ZeroAddress, "0x"]
+        ["uint32", "address", "address", "bytes", "bytes32"],
+        [remoteEid, owner.address, ethers.ZeroAddress, "0x", messageId]
       );
 
-      await expect(
-        mockEndpointWithReceive.callLzReceive(
-          await bridgeReceiver.getAddress(),
-          origin,
-          guid,
-          message,
-          executor.address,
-          extraData
-        )
-      ).to.be.revertedWith("BridgeReceiver: localContract=0");
+      await mockEndpointWithReceive.callLzReceive(
+        await bridgeReceiver.getAddress(),
+        origin,
+        guid,
+        message,
+        executor.address,
+        extraData
+      );
+      const stored = await bridgeReceiver.getGenLayerMessage(messageId);
+      expect(stored.targetContract).to.equal(ethers.ZeroAddress);
     });
 
-    it("Should successfully forward the call to local contract", async function () {
+    it("Should store the message for the relay service", async function () {
       const testMessage = "0x1234";
+      const messageId = ethers.hexlify(ethers.randomBytes(32));
       const message = ethers.AbiCoder.defaultAbiCoder().encode(
-        ["uint32", "address", "address", "bytes"],
-        [remoteEid, owner.address, await mockTarget.getAddress(), testMessage]
+        ["uint32", "address", "address", "bytes", "bytes32"],
+        [remoteEid, owner.address, await mockTarget.getAddress(), testMessage, messageId]
       );
 
       await mockEndpointWithReceive.callLzReceive(
@@ -235,17 +237,20 @@ describe("BridgeReceiver", function () {
         extraData
       );
 
-      expect(await mockTarget.called()).to.be.true;
-      expect(await mockTarget.lastSrcEid()).to.equal(remoteEid);
-      expect(await mockTarget.lastSrcSender()).to.equal(owner.address);
-      expect(await mockTarget.lastMessage()).to.equal(testMessage);
+      const stored = await bridgeReceiver.getGenLayerMessage(messageId);
+      expect(stored.srcChainId).to.equal(remoteEid);
+      expect(stored.srcSender).to.equal(owner.address);
+      expect(stored.targetContract).to.equal(await mockTarget.getAddress());
+      expect(stored.data).to.equal(testMessage);
+      expect(await mockTarget.called()).to.be.false;
     });
 
-    it("Should emit ForwardCallSuccess event", async function () {
+    it("Should emit MessageForGenLayer for the relay service", async function () {
       const testMessage = "0x1234";
+      const messageId = ethers.hexlify(ethers.randomBytes(32));
       const message = ethers.AbiCoder.defaultAbiCoder().encode(
-        ["uint32", "address", "address", "bytes"],
-        [remoteEid, owner.address, await mockTarget.getAddress(), testMessage]
+        ["uint32", "address", "address", "bytes", "bytes32"],
+        [remoteEid, owner.address, await mockTarget.getAddress(), testMessage, messageId]
       );
 
       await expect(
@@ -258,8 +263,8 @@ describe("BridgeReceiver", function () {
           extraData
         )
       )
-        .to.emit(bridgeReceiver, "ForwardCallSuccess")
-        .withArgs(origin.srcEid, origin.sender, await mockTarget.getAddress(), testMessage);
+        .to.emit(bridgeReceiver, "MessageForGenLayer")
+        .withArgs(messageId, origin.srcEid, owner.address, await mockTarget.getAddress(), testMessage);
     });
   });
-}); 
+});

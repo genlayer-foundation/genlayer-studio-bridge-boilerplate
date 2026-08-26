@@ -1,6 +1,8 @@
 import * as dotenv from "dotenv";
 import { ethers } from "hardhat";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
+import readline from "node:readline/promises";
+import { stdin as input, stdout as output } from "node:process";
 
 dotenv.config();
 
@@ -36,11 +38,22 @@ async function main() {
   const [nativeFee] = await sender.quoteSendToGenLayer(targetContract, messageData, options);
   console.log("Fee:", ethers.formatEther(nativeFee), "ETH");
 
+  const rl = readline.createInterface({ input, output });
+  const confirmation = await rl.question(
+    "This sends a state-changing Base Sepolia transaction and spends gas. Type YES to continue: ",
+  );
+  rl.close();
+  if (confirmation.trim() !== "YES") {
+    console.log("Cancelled. No transaction was sent.");
+    return;
+  }
+
   console.log("Sending message...");
   const tx = await sender.sendToGenLayer(targetContract, messageData, options, { value: nativeFee });
   console.log("TX:", tx.hash);
 
   const receipt = await tx.wait();
+  if (!receipt) throw new Error("Transaction receipt was not returned");
   console.log("Message sent successfully!");
   
   // Find the MessageSentToGenLayer event
@@ -65,4 +78,3 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-

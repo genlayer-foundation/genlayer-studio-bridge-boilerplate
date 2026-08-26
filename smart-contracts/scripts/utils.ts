@@ -2,6 +2,12 @@ import * as dotenv from "dotenv";
 import fs from "fs";
 import hre, { ethers } from "hardhat";
 import path from "path";
+import {
+  assertChainId,
+  getEvmNetworkProfile,
+  getRequiredLayerZeroEndpoint,
+  type EvmNetworkProfile,
+} from "./network-config";
 
 dotenv.config();
 
@@ -14,6 +20,7 @@ export interface NetworkInfo {
   networkName: string;
   chainId: bigint;
   endpointAddress: string;
+  profile: EvmNetworkProfile;
 }
 
 export interface DeploymentResult {
@@ -24,6 +31,13 @@ export interface DeploymentResult {
   deploymentHash: string;
   params: Record<string, any>;
   timestamp: string;
+}
+
+export interface DeploymentManifest {
+  network: string;
+  chainId: number;
+  contracts: Record<string, DeploymentResult>;
+  updatedAt: string;
 }
 
 // ============================================================================
@@ -78,16 +92,16 @@ export async function getNetworkInfo(): Promise<NetworkInfo> {
   const [deployer] = await ethers.getSigners();
   const network = await ethers.provider.getNetwork();
   const networkName = hre.network.name;
-
-  // Get LayerZero endpoint for this network
-  const envVarName = `${networkName.toUpperCase()}_ENDPOINT`;
-  const endpointAddress = process.env[envVarName] || "";
+  const profile = getEvmNetworkProfile(networkName);
+  assertChainId(profile, network.chainId);
+  const endpointAddress = getRequiredLayerZeroEndpoint(process.env);
 
   return {
     deployer,
     networkName,
     chainId: network.chainId,
     endpointAddress,
+    profile,
   };
 }
 
@@ -99,9 +113,9 @@ export function logNetworkHeader(action: string, networkInfo: NetworkInfo): void
   console.log("Network:", networkInfo.networkName);
   console.log("Chain ID:", networkInfo.chainId);
   console.log("Deployer:", networkInfo.deployer.address);
-  if (networkInfo.endpointAddress) {
-    console.log("LZ Endpoint:", networkInfo.endpointAddress);
-  }
+  console.log("Role:", networkInfo.profile.role);
+  console.log("LZ EID:", networkInfo.profile.layerZeroEid);
+  console.log("LZ Endpoint:", networkInfo.endpointAddress);
 }
 
 // ============================================================================
@@ -124,6 +138,27 @@ export async function saveDeploymentResult(result: DeploymentResult): Promise<vo
 
   fs.writeFileSync(filename, JSON.stringify(result, null, 2));
   console.log(`\nDeployment saved to: ${filename}`);
+
+  const manifestFilename = path.join(
+    deploymentsDir,
+    `${result.network}-${result.chainId}-manifest.json`,
+  );
+  let manifest: DeploymentManifest = {
+    network: result.network,
+    chainId: result.chainId,
+    contracts: {},
+    updatedAt: new Date().toISOString(),
+  };
+  if (fs.existsSync(manifestFilename)) {
+    manifest = JSON.parse(fs.readFileSync(manifestFilename, "utf-8")) as DeploymentManifest;
+    if (manifest.network !== result.network || manifest.chainId !== result.chainId) {
+      throw new Error(`Deployment manifest does not match ${result.network}/${result.chainId}`);
+    }
+  }
+  manifest.contracts[result.contract] = result;
+  manifest.updatedAt = new Date().toISOString();
+  fs.writeFileSync(manifestFilename, JSON.stringify(manifest, null, 2));
+  console.log(`Manifest updated: ${manifestFilename}`);
 }
 
 /**
@@ -195,23 +230,9 @@ export async function getContract(name: string, address: string) {
 // LayerZero Helpers
 // ============================================================================
 
-export const LAYER_ZERO_EIDS = {
-  zkSyncSepolia: 40305,
-  zkSyncMainnet: 30165,
-  baseSepolia: 40245,
-  baseMainnet: 30184,
-} as const;
-
 /**
  * Get LayerZero EID for a network name
  */
 export function getLayerZeroEid(networkName: string): number {
-  const normalized = networkName.replace(/Testnet$/i, "");
-  const key = normalized as keyof typeof LAYER_ZERO_EIDS;
-
-  if (key in LAYER_ZERO_EIDS) {
-    return LAYER_ZERO_EIDS[key];
-  }
-
-  throw new Error(`Unknown LayerZero EID for network: ${networkName}`);
+  return getEvmNetworkProfile(networkName).layerZeroEid;
 }

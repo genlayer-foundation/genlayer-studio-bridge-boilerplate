@@ -16,10 +16,8 @@ import {
   saveDeploymentResult,
   verifyContract,
   getEnvVar,
-  getEnvVarOrDefault,
   validateAddress,
   addressToBytes32,
-  LAYER_ZERO_EIDS,
 } from "./utils";
 import { ethers } from "hardhat";
 
@@ -136,10 +134,10 @@ async function deployBridgeSender() {
   // Validate config
   validateAddress(networkInfo.endpointAddress, "LZ Endpoint");
   const ownerAddress = getEnvVar("OWNER_ADDRESS");
-  const zkSyncReceiverAddress = getEnvVar("ZKSYNC_BRIDGE_RECEIVER_ADDRESS");
-  const zkSyncEid = parseInt(getEnvVarOrDefault("ZKSYNC_EID", "40305"));
+  const zkSyncReceiverAddress = getEnvVar("HUB_BRIDGE_RECEIVER_ADDRESS");
+  const zkSyncEid = parseInt(getEnvVar("DESTINATION_LAYERZERO_EID"), 10);
   validateAddress(ownerAddress, "Owner");
-  validateAddress(zkSyncReceiverAddress, "zkSync BridgeReceiver");
+  validateAddress(zkSyncReceiverAddress, "HUB_BRIDGE_RECEIVER_ADDRESS");
 
   const zkSyncReceiverBytes32 = addressToBytes32(zkSyncReceiverAddress);
 
