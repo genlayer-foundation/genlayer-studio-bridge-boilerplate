@@ -10,6 +10,7 @@ const NETWORK_PROFILES: Record<string, EvmNetworkProfile> = {
   zkSyncSepoliaTestnet: { name: "zkSyncSepoliaTestnet", chainId: 300, layerZeroEid: 40305, role: "hub" },
   zkSyncMainnet: { name: "zkSyncMainnet", chainId: 324, layerZeroEid: 30165, role: "hub" },
   baseSepoliaTestnet: { name: "baseSepoliaTestnet", chainId: 84532, layerZeroEid: 40245, role: "target" },
+  ethereumSepoliaTestnet: { name: "ethereumSepoliaTestnet", chainId: 11155111, layerZeroEid: 40161, role: "target" },
   baseMainnet: { name: "baseMainnet", chainId: 8453, layerZeroEid: 30184, role: "target" },
 };
 

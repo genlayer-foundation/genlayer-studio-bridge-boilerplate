@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import {ILayerZeroEndpointV2, Origin} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/ILayerZeroEndpointV2.sol";
+import {SetConfigParam} from "@layerzerolabs/lz-evm-protocol-v2/contracts/interfaces/IMessageLibManager.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {ILayerZeroReceiver} from "./interfaces/ILayerZeroReceiver.sol";
@@ -52,6 +53,23 @@ contract BridgeReceiver is ILayerZeroReceiver, Ownable, ReentrancyGuard {
         require(trustedForwarders[_remoteEid] != bytes32(0), "BridgeReceiver: no forwarder set");
         emit TrustedForwarderRemoved(_remoteEid, trustedForwarders[_remoteEid]);
         delete trustedForwarders[_remoteEid];
+    }
+
+    /// @notice Set the endpoint delegate used for LayerZero configuration.
+    function setLayerZeroDelegate(address _delegate) external onlyOwner {
+        endpoint.setDelegate(_delegate);
+    }
+
+    /// @notice Configure a LayerZero message library for this OApp.
+    function setLayerZeroConfig(
+        address _library,
+        uint32 _eid,
+        uint32 _configType,
+        bytes calldata _config
+    ) external onlyOwner {
+        SetConfigParam[] memory params = new SetConfigParam[](1);
+        params[0] = SetConfigParam({eid: _eid, configType: _configType, config: _config});
+        endpoint.setConfig(address(this), _library, params);
     }
 
     // ILayerZeroReceiver
