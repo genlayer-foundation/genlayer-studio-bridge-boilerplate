@@ -3,7 +3,7 @@ import { createAccount, createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
 const privateKey = process.env.PRIVATE_KEY;
-const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+const rpcUrl = process.env.GENLAYER_RPC_URL;
 const stringReceiverAddress = process.env.STRING_RECEIVER_ADDRESS;
 
 if (!privateKey) {
@@ -12,6 +12,7 @@ if (!privateKey) {
 if (!stringReceiverAddress) {
   throw new Error('Missing STRING_RECEIVER_ADDRESS env var');
 }
+if (!rpcUrl) throw new Error('Missing GENLAYER_RPC_URL env var');
 
 const account = createAccount(privateKey as `0x${string}`);
 const client = createClient({

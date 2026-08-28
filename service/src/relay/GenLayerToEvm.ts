@@ -2,12 +2,10 @@
  * GenLayer -> EVM Relay
  *
  * Polls GenLayer BridgeSender for pending messages and relays them
- * via zkSync BridgeForwarder to destination EVM chains.
+ * via the configured hub BridgeForwarder to the destination EVM chain.
  */
 
 import { ethers } from "ethers";
-import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
 import type { Address } from "genlayer-js/types";
 import { Options } from "@layerzerolabs/lz-v2-utilities";
 import {
@@ -17,6 +15,7 @@ import {
   getGenlayerRpcUrl,
   getPrivateKey,
 } from "../config.js";
+import { createConfiguredGenLayerClient } from "../genlayer-client.js";
 
 interface BridgeMessage {
   targetChainId: number;
@@ -47,18 +46,7 @@ export class GenLayerToEvmRelay {
       this.wallet
     );
 
-    // Initialize GenLayer client
-    const privateKey = getPrivateKey();
-    const account = createAccount(`0x${privateKey.replace(/^0x/, "")}`);
-    this.genLayerClient = createClient({
-      chain: {
-        ...studionet,
-        rpcUrls: {
-          default: { http: [getGenlayerRpcUrl()] },
-        },
-      },
-      account,
-    });
+    this.genLayerClient = createConfiguredGenLayerClient();
 
     this.usedHashes = new Set<string>();
   }
@@ -133,7 +121,7 @@ export class GenLayerToEvmRelay {
         .toHex();
 
       // Get fee quote
-      const dstEid = message.targetChainId; // Already LZ EID
+      const dstEid = message.targetChainId; // The message stores the LayerZero EID.
       const [nativeFee] = await this.bridgeForwarder.quoteCallRemoteArbitrary(
         dstEid,
         message.data,

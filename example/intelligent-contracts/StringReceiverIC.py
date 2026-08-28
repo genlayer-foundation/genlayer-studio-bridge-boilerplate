@@ -12,14 +12,14 @@ class StringReceiverIC(gl.Contract):
     owner: Address
 
     def __init__(self, bridge_receiver: str):
-        self.bridge_receiver = Address(bridge_receiver)
+        self.bridge_receiver = bridge_receiver
         self.owner = gl.message.sender_address
 
     @gl.public.write
     def set_bridge_receiver(self, bridge_receiver: str):
         if gl.message.sender_address != self.owner:
             raise ValueError("Only owner")
-        self.bridge_receiver = Address(bridge_receiver)
+        self.bridge_receiver = bridge_receiver
 
     @gl.public.write
     def process_bridge_message(

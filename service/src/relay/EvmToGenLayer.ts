@@ -1,13 +1,11 @@
 /**
  * EVM -> GenLayer Relay (LayerZero Pattern)
  *
- * Polls zkSync BridgeReceiver for pending messages and relays them
+ * Polls the configured hub BridgeReceiver for pending messages and relays them
  * to GenLayer BridgeReceiver IC, which dispatches to target ICs.
  */
 
 import { ethers } from "ethers";
-import { createAccount, createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
 import type { Address } from "genlayer-js/types";
 import {
   getBridgeReceiverIcAddress,
@@ -16,6 +14,7 @@ import {
   getGenlayerRpcUrl,
   getPrivateKey,
 } from "../config.js";
+import { createConfiguredGenLayerClient } from "../genlayer-client.js";
 
 interface GenLayerBoundMessage {
   messageId: string;
@@ -33,48 +32,37 @@ const BRIDGE_RECEIVER_ABI = [
 ];
 
 export class EvmToGenLayerRelay {
-  private zkSyncProvider: ethers.JsonRpcProvider;
-  private zkSyncWallet: ethers.Wallet;
-  private zkSyncBridgeReceiver: ethers.Contract;
+  private hubProvider: ethers.JsonRpcProvider;
+  private hubWallet: ethers.Wallet;
+  private hubBridgeReceiver: ethers.Contract;
   private genLayerClient: any;
   private processedMessageIds: Set<string>;
 
   constructor() {
-    this.zkSyncProvider = new ethers.JsonRpcProvider(getZkSyncRpcUrl());
-    this.zkSyncWallet = new ethers.Wallet(getPrivateKey(), this.zkSyncProvider);
+    this.hubProvider = new ethers.JsonRpcProvider(getZkSyncRpcUrl());
+    this.hubWallet = new ethers.Wallet(getPrivateKey(), this.hubProvider);
 
-    this.zkSyncBridgeReceiver = new ethers.Contract(
+    this.hubBridgeReceiver = new ethers.Contract(
       getZkSyncBridgeReceiverAddress(),
       BRIDGE_RECEIVER_ABI,
-      this.zkSyncWallet
+      this.hubWallet
     );
 
-    // Initialize GenLayer client
-    const privateKey = getPrivateKey();
-    const account = createAccount(`0x${privateKey.replace(/^0x/, "")}`);
-    this.genLayerClient = createClient({
-      chain: {
-        ...studionet,
-        rpcUrls: {
-          default: { http: [getGenlayerRpcUrl()] },
-        },
-      },
-      account,
-    });
+    this.genLayerClient = createConfiguredGenLayerClient();
 
     this.processedMessageIds = new Set<string>();
 
     console.log(
-      `[EVM→GL] Initialized. zkSync receiver: ${getZkSyncBridgeReceiverAddress()}`
+      `[EVM→GL] Initialized. Hub receiver: ${getZkSyncBridgeReceiverAddress()}`
     );
   }
 
   private async getPendingMessages(): Promise<GenLayerBoundMessage[]> {
     try {
       const [messageIds, messages] =
-        await this.zkSyncBridgeReceiver.getPendingGenLayerMessages();
+        await this.hubBridgeReceiver.getPendingGenLayerMessages();
 
-      console.log(`[EVM→GL] Found ${messageIds.length} pending on zkSync`);
+      console.log(`[EVM→GL] Found ${messageIds.length} pending on the hub`);
 
       const newMessages: GenLayerBoundMessage[] = [];
       for (let i = 0; i < messageIds.length; i++) {
@@ -96,7 +84,7 @@ export class EvmToGenLayerRelay {
 
       return newMessages;
     } catch (error) {
-      console.error("[EVM→GL] Error polling zkSync:", error);
+      console.error("[EVM→GL] Error polling hub:", error);
       return [];
     }
   }
@@ -116,7 +104,7 @@ export class EvmToGenLayerRelay {
       });
 
       if (isProcessed) {
-        console.log(`[EVM→GL] Already in BridgeReceiver, marking on zkSync`);
+        console.log(`[EVM→GL] Already in BridgeReceiver, marking on the hub`);
         await this.markRelayedOnZkSync(message.messageId);
         this.processedMessageIds.add(message.messageId);
         return;
@@ -160,8 +148,8 @@ export class EvmToGenLayerRelay {
 
   private async markRelayedOnZkSync(messageId: string): Promise<void> {
     try {
-      console.log(`[EVM→GL] Marking ${messageId} relayed on zkSync`);
-      const tx = await this.zkSyncBridgeReceiver.markMessageRelayed(messageId);
+      console.log(`[EVM→GL] Marking ${messageId} relayed on the hub`);
+      const tx = await this.hubBridgeReceiver.markMessageRelayed(messageId);
       await tx.wait();
       console.log(`[EVM→GL] Marked relayed`);
     } catch (error) {

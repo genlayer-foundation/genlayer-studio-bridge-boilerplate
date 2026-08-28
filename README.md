@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-beta-orange.svg)
 
-This boilerplate provides the complete infrastructure to connect **GenLayer Intelligent Contracts** with **EVM** chains (Base, Ethereum, etc.) via **LayerZero V2**. It enables any blockchain to offload complex, non-deterministic work—AI reasoning, web access, data verification—to GenLayer and receive verified results.
+This boilerplate provides infrastructure to connect **GenLayer Intelligent Contracts** with **EVM** chains through **LayerZero V2**. It enables a blockchain to offload non-deterministic work such as AI reasoning, web access, and data verification to GenLayer.
 
 ## 📚 Table of Contents
 
@@ -15,7 +15,7 @@ This boilerplate provides the complete infrastructure to connect **GenLayer Inte
 - [Repository Structure](#-repository-structure)
 - [Key Contracts](#-key-contracts)
 - [Prerequisites](#-prerequisites)
-- [Deployment Guide](#-deployment-guide)
+- [Deployment Guide](#deployment-guide)
   - [1. Installation](#1-installation)
   - [2. Configuration](#2-configuration)
   - [3. Deploy EVM Infrastructure](#3-deploy-evm-infrastructure)
@@ -136,7 +136,7 @@ To bridge intelligence to your dApp, you need:
   - **Base Sepolia** (Example Target Chain)
   - **ZKsync Era Sepolia** (Hub Chain)
 
-## 🚀 Deployment Guide
+## Deployment Guide
 
 Follow these steps to deploy your own instance of the bridge infrastructure.
 
@@ -158,7 +158,7 @@ Create your environment files.
 
 ```bash
 cp smart-contracts/.env.example smart-contracts/.env
-# EDIT: Add your PRIVATE_KEY and RPC URLs
+# EDIT: Add your PRIVATE_KEY, RPC URLs, and LAYERZERO_ENDPOINT for the selected network
 ```
 
 **Service (.env)**
@@ -175,14 +175,15 @@ Deploy the "mailbox" contracts to the EVM chains.
 ```bash
 cd smart-contracts
 
-# 1. Deploy Receiver (Target & Hub)
+# 1. Set `LAYERZERO_ENDPOINT` to the LayerZero V2 endpoint for the selected network.
+# 2. Deploy Receiver (Target & Hub)
 CONTRACT=receiver npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 CONTRACT=receiver npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
 
-# 2. Deploy Forwarder (Hub - ZKsync Era)
+# 3. Deploy Forwarder (Hub - ZKsync Era)
 CONTRACT=forwarder npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
 
-# 3. Deploy Sender (Target - Base)
+# 4. Deploy Sender (Target - Base). Set DESTINATION_LAYERZERO_EID explicitly.
 CONTRACT=sender npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 ```
 
@@ -212,14 +213,45 @@ Deploy the Intelligent Contracts via [GenLayer Studio](https://studio.genlayer.c
 
 ### 6. Activate the Resolution Layer
 
-Update `service/.env` with your new contract addresses:
+Each deployment writes both a contract record and a per-chain network manifest
+under `smart-contracts/deployments/`. Merge the hub and target records into the
+combined manifest used by the relay:
+
+```bash
+cd smart-contracts
+node scripts/merge-manifests.mjs \
+  --hub deployments/zkSyncSepoliaTestnet-300-manifest.json \
+  --target deployments/baseSepoliaTestnet-84532-manifest.json \
+  --profile bradbury \
+  --genlayer-chain-id 4221 \
+  --output ../service/network-manifests/current.json
+```
+
+Set `DEPLOYMENT_MANIFEST` to the generated file. Do not copy deployed
+addresses into source files.
+
+Update `service/.env` with the selected profile and its manifest:
 
 ```env
-BRIDGE_SENDER_ADDRESS=<GenLayer BridgeSender Address>
-BRIDGE_RECEIVER_IC_ADDRESS=<GenLayer BridgeReceiver Address>
-ZKSYNC_BRIDGE_FORWARDER_ADDRESS=<ZKsync Era BridgeForwarder Address>
-ZKSYNC_BRIDGE_RECEIVER_ADDRESS=<ZKsync Era BridgeReceiver Address>
+BRIDGE_NETWORK_PROFILE=bradbury
+GENLAYER_CHAIN_ID=4221
+GENLAYER_RPC_URL=<Bradbury RPC URL>
+HUB_RPC_URL=<hub EVM RPC URL>
+HUB_CHAIN_ID=<hub EVM chain ID>
+HUB_LAYERZERO_EID=<hub LayerZero EID>
+TARGET_RPC_URL=<target EVM RPC URL>
+TARGET_CHAIN_ID=<target EVM chain ID>
+TARGET_LAYERZERO_EID=<target LayerZero EID>
+TARGET_BRIDGE_SENDER_ADDRESS=<target EVM BridgeSender address>
+TARGET_BRIDGE_RECEIVER_ADDRESS=<target BridgeReceiver address>
+BRIDGE_RECEIVER_IC_ADDRESS=<GenLayer BridgeReceiver address>
+DEPLOYMENT_MANIFEST=<path to the generated network manifest>
 ```
+
+No deployment manifest is committed. Generated manifests are local runtime
+configuration and are ignored by Git because they contain deployment-specific
+addresses. The profile checker verifies the generated addresses against live
+RPCs before the relay is started.
 
 Start the relay:
 
@@ -230,6 +262,18 @@ npm start
 ```
 
 _The service is now polling. Your bridge is live._
+
+### Opt-in profile check
+
+Before running a relay, verify the selected profile and deployed bytecode without sending a transaction:
+
+```bash
+cd service
+set COUNSEL_BRIDGE_INTEGRATION=1
+npm run integration:profile
+```
+
+Use PowerShell `$env:COUNSEL_BRIDGE_INTEGRATION="1"` instead of `set` on Windows. This check reads both EVM RPCs, validates their chain IDs, and confirms bytecode at the manifest addresses. It does not call GenLayer state-changing methods.
 
 ## 🛠 Development & Debugging
 

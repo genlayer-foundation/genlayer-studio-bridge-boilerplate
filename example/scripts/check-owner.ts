@@ -2,12 +2,13 @@ import { createAccount, createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
 const privateKey = process.env.PRIVATE_KEY;
-const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+const rpcUrl = process.env.GENLAYER_RPC_URL;
 const bridgeReceiverAddress = process.env.BRIDGE_RECEIVER_IC_ADDRESS;
 
 if (!privateKey) {
   throw new Error('Missing PRIVATE_KEY env var');
 }
+if (!rpcUrl) throw new Error('Missing GENLAYER_RPC_URL env var');
 if (!bridgeReceiverAddress) {
   throw new Error('Missing BRIDGE_RECEIVER_IC_ADDRESS env var');
 }

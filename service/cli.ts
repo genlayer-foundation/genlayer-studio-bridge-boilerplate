@@ -6,17 +6,18 @@
  *   npx ts-node cli.ts <command> [args]
  *
  * Commands:
- *   check-receiver           - Check zkSync BridgeReceiver state
- *   check-sender             - Check Base BridgeSender state
- *   check-forwarder          - Check zkSync BridgeForwarder state
+ *   check-receiver           - Check hub BridgeReceiver state
+ *   check-sender             - Check target BridgeSender state
+ *   check-forwarder          - Check hub BridgeForwarder state
  *   check-config             - Verify all contract configurations
- *   pending-messages         - List pending messages on zkSync
+ *   pending-messages         - List pending messages on the hub
  *   debug-tx <hash>          - Debug a transaction (show revert reason)
  *   help                     - Show this help message
  */
 
 import { ethers } from "ethers";
 import dotenv from "dotenv";
+import { getNetworkProfile } from "./src/config.js";
 
 dotenv.config();
 
@@ -24,18 +25,34 @@ dotenv.config();
 // Configuration
 // ============================================================================
 
-const CONFIG = {
-  // RPCs
-  zkSyncRpc: process.env.ZKSYNC_RPC_URL || "https://sepolia.era.zksync.dev",
-  baseRpc: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
-  genlayerRpc: process.env.GENLAYER_RPC_URL || "https://studio.genlayer.com/api",
-
-  // Contracts
-  zkSyncBridgeReceiver: process.env.ZKSYNC_BRIDGE_RECEIVER_ADDRESS || "",
-  bridgeForwarder: process.env.BRIDGE_FORWARDER_ADDRESS || "",
-  bridgeSender: process.env.BRIDGE_SENDER_ADDRESS || "",
-  bridgeReceiverIc: process.env.BRIDGE_RECEIVER_IC_ADDRESS || "",
-};
+function loadCliConfig() {
+  try {
+    const profile = getNetworkProfile();
+    return {
+      profile: profile.name,
+      hubRpc: profile.hubRpcUrl,
+      targetRpc: profile.targetRpcUrl,
+      genlayerRpc: profile.genlayerRpcUrl,
+      hubBridgeReceiver: profile.hubBridgeReceiverAddress,
+      bridgeForwarder: profile.bridgeForwarderAddress,
+      bridgeSender: profile.targetBridgeSenderAddress,
+      bridgeReceiverIc: profile.bridgeReceiverIcAddress,
+      targetLayerZeroEid: profile.targetLayerZeroEid,
+    };
+  } catch {
+    return {
+      profile: "not configured",
+      hubRpc: "",
+      targetRpc: "",
+      genlayerRpc: "",
+      hubBridgeReceiver: "",
+      bridgeForwarder: "",
+      bridgeSender: "",
+      bridgeReceiverIc: "",
+      targetLayerZeroEid: 0,
+    };
+  }
+}
 
 // ABIs
 const BRIDGE_RECEIVER_ABI = [
@@ -69,21 +86,23 @@ const BRIDGE_SENDER_ABI = [
 // ============================================================================
 
 async function checkReceiver() {
-  console.log("Checking zkSync BridgeReceiver...\n");
+  console.log("Checking hub BridgeReceiver...\n");
+  const config = loadCliConfig();
 
-  if (!CONFIG.zkSyncBridgeReceiver) {
-    console.error("ZKSYNC_BRIDGE_RECEIVER_ADDRESS not set");
+  if (!config.hubBridgeReceiver) {
+    console.error("Network profile is not configured");
     return;
   }
 
-  const provider = new ethers.JsonRpcProvider(CONFIG.zkSyncRpc);
+  const provider = new ethers.JsonRpcProvider(config.hubRpc);
   const contract = new ethers.Contract(
-    CONFIG.zkSyncBridgeReceiver,
+    config.hubBridgeReceiver,
     BRIDGE_RECEIVER_ABI,
     provider
   );
 
-  console.log("Address:", CONFIG.zkSyncBridgeReceiver);
+  console.log("Profile:", config.profile);
+  console.log("Address:", config.hubBridgeReceiver);
 
   const endpoint = await contract.endpoint();
   console.log("LZ Endpoint:", endpoint);
@@ -93,15 +112,10 @@ async function checkReceiver() {
 
   // Check trusted forwarders
   console.log("\nTrusted Forwarders:");
-  for (const [name, eid] of [
-    ["Base Sepolia", 40245],
-    ["Base Mainnet", 30184],
-  ]) {
-    const trusted = await contract.trustedForwarders(eid);
-    if (trusted !== ethers.ZeroHash) {
-      const addr = "0x" + trusted.slice(-40);
-      console.log(`  ${name} (${eid}): ${addr}`);
-    }
+  const trusted = await contract.trustedForwarders(config.targetLayerZeroEid);
+  if (trusted !== ethers.ZeroHash) {
+    const addr = "0x" + trusted.slice(-40);
+    console.log(`  Target (${config.targetLayerZeroEid}): ${addr}`);
   }
 
   // Check message count
@@ -114,16 +128,17 @@ async function checkReceiver() {
 }
 
 async function checkSender() {
-  console.log("Checking Base BridgeSender...\n");
+  console.log("Checking target BridgeSender...\n");
+  const config = loadCliConfig();
 
-  if (!CONFIG.bridgeSender) {
-    console.error("BRIDGE_SENDER_ADDRESS not set");
+  if (!config.bridgeSender) {
+    console.error("Network profile is not configured");
     return;
   }
 
-  const senderAddr = CONFIG.bridgeSender;
+  const senderAddr = config.bridgeSender;
 
-  const provider = new ethers.JsonRpcProvider(CONFIG.baseRpc);
+  const provider = new ethers.JsonRpcProvider(config.targetRpc);
   const contract = new ethers.Contract(senderAddr, BRIDGE_SENDER_ABI, provider);
 
   console.log("Address:", senderAddr);
@@ -135,15 +150,15 @@ async function checkSender() {
   console.log("Owner:", owner);
 
   const zkSyncEid = await contract.zkSyncEid();
-  console.log("\nzkSync EID:", zkSyncEid.toString());
+  console.log("\nConfigured hub EID:", zkSyncEid.toString());
 
   const zkSyncReceiver = await contract.zkSyncBridgeReceiver();
   const receiverAddr = "0x" + zkSyncReceiver.slice(-40);
-  console.log("zkSync Receiver (bytes32):", zkSyncReceiver);
-  console.log("zkSync Receiver (address):", receiverAddr);
+  console.log("Hub receiver (bytes32):", zkSyncReceiver);
+  console.log("Hub receiver (address):", receiverAddr);
 
   // Expected receiver
-  const expected = CONFIG.zkSyncBridgeReceiver;
+  const expected = config.hubBridgeReceiver;
   if (expected) {
     if (receiverAddr.toLowerCase() === expected.toLowerCase()) {
       console.log("\n✓ Receiver matches expected");
@@ -155,21 +170,23 @@ async function checkSender() {
 }
 
 async function checkForwarder() {
-  console.log("Checking zkSync BridgeForwarder...\n");
+  console.log("Checking hub BridgeForwarder...\n");
+  const config = loadCliConfig();
 
-  if (!CONFIG.bridgeForwarder) {
-    console.error("BRIDGE_FORWARDER_ADDRESS not set");
+  if (!config.bridgeForwarder) {
+    console.error("Network profile is not configured");
     return;
   }
 
-  const provider = new ethers.JsonRpcProvider(CONFIG.zkSyncRpc);
+  const provider = new ethers.JsonRpcProvider(config.hubRpc);
   const contract = new ethers.Contract(
-    CONFIG.bridgeForwarder,
+    config.bridgeForwarder,
     BRIDGE_FORWARDER_ABI,
     provider
   );
 
-  console.log("Address:", CONFIG.bridgeForwarder);
+  console.log("Profile:", config.profile);
+  console.log("Address:", config.bridgeForwarder);
 
   const endpoint = await contract.endpoint();
   console.log("LZ Endpoint:", endpoint);
@@ -182,43 +199,44 @@ async function checkForwarder() {
 
   // Check bridge addresses
   console.log("\nBridge Addresses:");
-  for (const [name, eid] of [
-    ["Base Sepolia", 40245],
-    ["Base Mainnet", 30184],
-  ]) {
-    const bridge = await contract.bridgeAddresses(eid);
-    if (bridge !== ethers.ZeroHash) {
-      const addr = "0x" + bridge.slice(-40);
-      console.log(`  ${name} (${eid}): ${addr}`);
-    }
+  const bridge = await contract.bridgeAddresses(config.targetLayerZeroEid);
+  if (bridge !== ethers.ZeroHash) {
+    const addr = "0x" + bridge.slice(-40);
+    console.log(`  Target (${config.targetLayerZeroEid}): ${addr}`);
   }
 }
 
 async function checkConfig() {
   console.log("Verifying Bridge Configuration...\n");
+  const config = loadCliConfig();
 
   console.log("Environment:");
-  console.log("  zkSync RPC:", CONFIG.zkSyncRpc);
-  console.log("  Base RPC:", CONFIG.baseRpc);
-  console.log("  GenLayer RPC:", CONFIG.genlayerRpc);
+  console.log("  Profile:", config.profile);
+  console.log("  Hub RPC:", config.hubRpc || "(not set)");
+  console.log("  Target RPC:", config.targetRpc || "(not set)");
+  console.log("  GenLayer RPC:", config.genlayerRpc || "(not set)");
   console.log("");
   console.log("Contracts:");
-  console.log("  zkSync BridgeReceiver:", CONFIG.zkSyncBridgeReceiver || "(not set)");
-  console.log("  BridgeForwarder:", CONFIG.bridgeForwarder || "(not set)");
-  console.log("  BridgeSender:", CONFIG.bridgeSender || "(not set)");
-  console.log("  BridgeReceiver IC:", CONFIG.bridgeReceiverIc || "(not set)");
+  console.log("  Hub BridgeReceiver:", config.hubBridgeReceiver || "(not set)");
+  console.log("  BridgeForwarder:", config.bridgeForwarder || "(not set)");
+  console.log("  BridgeSender:", config.bridgeSender || "(not set)");
+  console.log("  BridgeReceiver IC:", config.bridgeReceiverIc || "(not set)");
   console.log("");
 
   // Check each contract has code
-  const zkProvider = new ethers.JsonRpcProvider(CONFIG.zkSyncRpc);
-  const baseProvider = new ethers.JsonRpcProvider(CONFIG.baseRpc);
+  if (!config.hubRpc || !config.targetRpc) {
+    console.error("Network profile is not configured");
+    return;
+  }
+  const zkProvider = new ethers.JsonRpcProvider(config.hubRpc);
+  const baseProvider = new ethers.JsonRpcProvider(config.targetRpc);
 
   console.log("Contract Code Verification:");
 
   for (const [name, addr, provider] of [
-    ["zkSync BridgeReceiver", CONFIG.zkSyncBridgeReceiver, zkProvider],
-    ["BridgeForwarder", CONFIG.bridgeForwarder, zkProvider],
-    ["BridgeSender", CONFIG.bridgeSender, baseProvider],
+    ["Hub BridgeReceiver", config.hubBridgeReceiver, zkProvider],
+    ["BridgeForwarder", config.bridgeForwarder, zkProvider],
+    ["BridgeSender", config.bridgeSender, baseProvider],
   ] as const) {
     if (addr) {
       const code = await provider.getCode(addr);
@@ -229,16 +247,17 @@ async function checkConfig() {
 }
 
 async function pendingMessages() {
-  console.log("Fetching Pending Messages from zkSync BridgeReceiver...\n");
+  console.log("Fetching pending messages from the hub BridgeReceiver...\n");
+  const config = loadCliConfig();
 
-  if (!CONFIG.zkSyncBridgeReceiver) {
-    console.error("ZKSYNC_BRIDGE_RECEIVER_ADDRESS not set");
+  if (!config.hubBridgeReceiver) {
+    console.error("Network profile is not configured");
     return;
   }
 
-  const provider = new ethers.JsonRpcProvider(CONFIG.zkSyncRpc);
+  const provider = new ethers.JsonRpcProvider(config.hubRpc);
   const contract = new ethers.Contract(
-    CONFIG.zkSyncBridgeReceiver,
+    config.hubBridgeReceiver,
     BRIDGE_RECEIVER_ABI,
     provider
   );
@@ -261,12 +280,14 @@ async function pendingMessages() {
 
 async function debugTx(txHash: string) {
   console.log(`Debugging Transaction: ${txHash}\n`);
+  const config = loadCliConfig();
 
-  // Try zkSync first, then Base
+  // Try hub first, then target
   for (const [name, rpc] of [
-    ["zkSync Sepolia", CONFIG.zkSyncRpc],
-    ["Base Sepolia", CONFIG.baseRpc],
+    ["Hub", config.hubRpc],
+    ["Target", config.targetRpc],
   ]) {
+    if (!rpc) continue;
     const provider = new ethers.JsonRpcProvider(rpc);
 
     try {
@@ -290,7 +311,6 @@ async function debugTx(txHash: string) {
                 data: tx.data,
                 value: tx.value,
               },
-              tx.blockNumber
             );
           } catch (e: any) {
             console.log("\nRevert Reason:", e.reason || e.message);
@@ -314,19 +334,20 @@ Bridge Service CLI
 Usage: npx ts-node cli.ts <command> [args]
 
 Commands:
-  check-receiver           Check zkSync BridgeReceiver state
-  check-sender             Check Base BridgeSender state
-  check-forwarder          Check zkSync BridgeForwarder state
+  check-receiver           Check hub BridgeReceiver state
+  check-sender             Check target BridgeSender state
+  check-forwarder          Check hub BridgeForwarder state
   check-config             Verify all contract configurations
-  pending-messages         List pending messages on zkSync
+  pending-messages         List pending messages on the hub
   debug-tx <hash>          Debug a transaction
   help                     Show this help message
 
 Environment:
   Set these in .env:
-    ZKSYNC_RPC_URL, BASE_SEPOLIA_RPC_URL
-    ZKSYNC_BRIDGE_RECEIVER_ADDRESS, BRIDGE_FORWARDER_ADDRESS
-    BRIDGE_SENDER_ADDRESS, BRIDGE_RECEIVER_IC_ADDRESS
+    BRIDGE_NETWORK_PROFILE, GENLAYER_CHAIN_ID, GENLAYER_RPC_URL
+    HUB_RPC_URL, HUB_CHAIN_ID, HUB_LAYERZERO_EID, HUB_BRIDGE_RECEIVER_ADDRESS
+    TARGET_RPC_URL, TARGET_CHAIN_ID, TARGET_LAYERZERO_EID
+    BRIDGE_FORWARDER_ADDRESS, BRIDGE_SENDER_ADDRESS, BRIDGE_RECEIVER_IC_ADDRESS
 `);
 }
 

@@ -20,7 +20,8 @@ type ConfigAction =
   | "set-trusted-forwarder"
   | "set-authorized-relayer"
   | "set-bridge-address"
-  | "set-sender-receiver";
+  | "set-sender-receiver"
+  | "set-layerzero-config";
 
 // ============================================================================
 // Configuration Actions
@@ -109,15 +110,15 @@ async function setBridgeAddress() {
 
 /**
  * Update zkSync bridge receiver on BridgeSender
- * Required env: BRIDGE_SENDER_ADDRESS, ZKSYNC_BRIDGE_RECEIVER_ADDRESS, ZKSYNC_EID (default 40305)
+ * Required env: BRIDGE_SENDER_ADDRESS, HUB_BRIDGE_RECEIVER_ADDRESS, DESTINATION_LAYERZERO_EID
  */
 async function setSenderReceiver() {
   const senderAddress = getEnvVar("BRIDGE_SENDER_ADDRESS");
-  const zkSyncReceiverAddress = getEnvVar("ZKSYNC_BRIDGE_RECEIVER_ADDRESS");
-  const zkSyncEid = parseInt(getEnvVarOrDefault("ZKSYNC_EID", "40305"));
+  const zkSyncReceiverAddress = getEnvVar("HUB_BRIDGE_RECEIVER_ADDRESS");
+  const zkSyncEid = parseInt(getEnvVar("DESTINATION_LAYERZERO_EID"), 10);
 
   validateAddress(senderAddress, "BRIDGE_SENDER_ADDRESS");
-  validateAddress(zkSyncReceiverAddress, "ZKSYNC_BRIDGE_RECEIVER_ADDRESS");
+  validateAddress(zkSyncReceiverAddress, "HUB_BRIDGE_RECEIVER_ADDRESS");
 
   console.log("\nUpdating zkSync receiver on BridgeSender");
   console.log("  Sender:", senderAddress);
@@ -144,6 +145,35 @@ async function setSenderReceiver() {
   console.log("  ✓ Updated (verified:", newReceiver, ")");
 }
 
+/**
+ * Apply a pre-encoded LayerZero message-library configuration through the OApp.
+ * Required env: OAPP_ADDRESS, OAPP_TYPE (sender or receiver), LAYERZERO_LIBRARY,
+ * CONFIG_EID, CONFIG_TYPE, CONFIG_BYTES.
+ */
+async function setLayerZeroConfig() {
+  const oappAddress = getEnvVar("OAPP_ADDRESS");
+  const oappType = getEnvVar("OAPP_TYPE").toLowerCase();
+  const library = getEnvVar("LAYERZERO_LIBRARY");
+  const eid = parseInt(getEnvVar("CONFIG_EID"), 10);
+  const configType = parseInt(getEnvVar("CONFIG_TYPE"), 10);
+  const configBytes = getEnvVar("CONFIG_BYTES");
+
+  validateAddress(oappAddress, "OAPP_ADDRESS");
+  if (oappType !== "sender" && oappType !== "receiver") throw new Error("OAPP_TYPE must be sender or receiver");
+  validateAddress(library, "LAYERZERO_LIBRARY");
+  if (!Number.isInteger(eid) || eid <= 0) throw new Error("CONFIG_EID must be a positive integer");
+  if (!Number.isInteger(configType) || configType <= 0) throw new Error("CONFIG_TYPE must be a positive integer");
+  if (!/^0x[0-9a-fA-F]*$/.test(configBytes) || configBytes.length % 2 !== 0) {
+    throw new Error("CONFIG_BYTES must be an even-length hex string");
+  }
+
+  const oapp = await getContract(oappType === "sender" ? "BridgeSender" : "BridgeReceiver", oappAddress);
+  const tx = await oapp.setLayerZeroConfig(library, eid, configType, configBytes);
+  console.log("  TX:", tx.hash);
+  await tx.wait();
+  console.log("  ✓ LayerZero configuration applied");
+}
+
 // ============================================================================
 // Main
 // ============================================================================
@@ -161,7 +191,10 @@ function printUsage() {
   console.log("    Env: BRIDGE_FORWARDER_ADDRESS, DST_EID, DST_BRIDGE_ADDRESS");
   console.log("");
   console.log("  set-sender-receiver    - Update zkSync receiver on BridgeSender");
-  console.log("    Env: BRIDGE_SENDER_ADDRESS, ZKSYNC_BRIDGE_RECEIVER_ADDRESS, ZKSYNC_EID");
+  console.log("    Env: BRIDGE_SENDER_ADDRESS, HUB_BRIDGE_RECEIVER_ADDRESS, DESTINATION_LAYERZERO_EID");
+  console.log("");
+  console.log("  set-layerzero-config   - Apply pre-encoded LayerZero library configuration");
+  console.log("    Env: OAPP_ADDRESS, OAPP_TYPE, LAYERZERO_LIBRARY, CONFIG_EID, CONFIG_TYPE, CONFIG_BYTES");
 }
 
 async function main() {
@@ -187,6 +220,9 @@ async function main() {
       break;
     case "set-sender-receiver":
       await setSenderReceiver();
+      break;
+    case "set-layerzero-config":
+      await setLayerZeroConfig();
       break;
     default:
       console.error(`Unknown action: ${action}`);

@@ -3,7 +3,7 @@
  * Send a test string message from GenLayer StringSender.
  *
  * Usage:
- *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio.genlayer.com/api
+ *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=<GenLayer RPC endpoint>
  *   npx tsx send-test-string.ts --address <StringSender_address> --message "Hello Base!"
  */
 
@@ -19,7 +19,7 @@ function parseArgs(): { address: string; message: string } {
   const message = messageIndex !== -1 ? args[messageIndex + 1] : 'Hello Base from GenLayer!';
 
   if (!address) {
-    console.error('❌ Missing required argument: --address <StringSender_address>');
+    console.error('Missing required argument: --address <StringSender_address>');
     process.exit(1);
   }
 
@@ -30,11 +30,12 @@ async function main(): Promise<void> {
   const { address, message } = parseArgs();
 
   const privateKey = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+  const rpcUrl = process.env.GENLAYER_RPC_URL;
 
   if (!privateKey) {
     throw new Error('Missing PRIVATE_KEY environment variable');
   }
+  if (!rpcUrl) throw new Error('Missing required environment variable: GENLAYER_RPC_URL');
 
   console.log('📤 Sending string message...\n');
   console.log(`  StringSender: ${address}`);
@@ -63,12 +64,12 @@ async function main(): Promise<void> {
     retries: 30,
   });
 
-  console.log('\n✅ Message sent successfully!');
+  console.log('\nMessage sent successfully.');
   console.log(`  Status: ${receipt.status}`);
   console.log('\n📝 Next: Run bridge service to relay the message');
 }
 
 main().catch((error) => {
-  console.error('\n❌ Failed:', error);
+  console.error('\nFailed:', error);
   process.exit(1);
 });

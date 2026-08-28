@@ -42,3 +42,5 @@ deployments/
 typechain-types/
 typechain/
 
+# Deployment receipts contain environment-specific addresses and must not be committed.
+service/network-manifests/*.json

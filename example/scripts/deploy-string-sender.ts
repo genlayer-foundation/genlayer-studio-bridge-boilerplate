@@ -13,7 +13,7 @@
  *     --target-contract <string_receiver_address>
  *
  * Environment variables:
- *   GENLAYER_RPC_URL - GenLayer RPC endpoint (default: https://studio.genlayer.com/api)
+ *   GENLAYER_RPC_URL - GenLayer RPC endpoint
  *   PRIVATE_KEY - Deployer private key
  */
 
@@ -28,9 +28,6 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 config({ path: path.resolve(__dirname, '../../../service/.env') });
-
-// LayerZero Endpoint ID for Base Sepolia
-const BASE_SEPOLIA_LZ_EID = 40245;
 
 interface DeploymentResult {
   contractAddress: string;
@@ -56,7 +53,7 @@ function parseArgs(): { bridgeSender: string; targetContract: string } {
     targetContractIndex !== -1 ? args[targetContractIndex + 1] : null;
 
   if (!bridgeSender) {
-    console.error('❌ Missing required argument: --bridge-sender <address>');
+    console.error('Missing required argument: --bridge-sender <address>');
     console.error('\nUsage:');
     console.error(
       '  npx tsx deploy-string-sender.ts --bridge-sender <addr> --target-contract <addr>',
@@ -66,7 +63,7 @@ function parseArgs(): { bridgeSender: string; targetContract: string } {
 
   if (!targetContract) {
     console.error(
-      '❌ Missing required argument: --target-contract <address>',
+      'Missing required argument: --target-contract <address>',
     );
     console.error('\nUsage:');
     console.error(
@@ -81,20 +78,25 @@ function parseArgs(): { bridgeSender: string; targetContract: string } {
 async function main(): Promise<void> {
   const { bridgeSender, targetContract } = parseArgs();
 
-  console.log('🚀 Deploying StringSender to GenLayer...\n');
+  console.log('Deploying StringSender to GenLayer...\n');
 
   // Validate environment
   const privateKey = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+  const rpcUrl = process.env.GENLAYER_RPC_URL;
+  const targetChainEid = Number(process.env.TARGET_LAYERZERO_EID);
 
   if (!privateKey) {
     throw new Error('Missing required environment variable: PRIVATE_KEY');
+  }
+  if (!rpcUrl) throw new Error('Missing required environment variable: GENLAYER_RPC_URL');
+  if (!Number.isSafeInteger(targetChainEid) || targetChainEid <= 0) {
+    throw new Error('Missing or invalid TARGET_LAYERZERO_EID environment variable');
   }
 
   console.log('Configuration:');
   console.log(`  RPC URL: ${rpcUrl}`);
   console.log(`  Bridge Sender: ${bridgeSender}`);
-  console.log(`  Target Chain EID: ${BASE_SEPOLIA_LZ_EID} (Base Sepolia)`);
+  console.log(`  Target Chain EID: ${targetChainEid}`);
   console.log(`  Target Contract: ${targetContract}`);
   console.log();
 
@@ -118,7 +120,7 @@ async function main(): Promise<void> {
   // Deploy the contract
   const hash = await client.deployContract({
     code: contractCode,
-    args: [bridgeSender, BASE_SEPOLIA_LZ_EID, targetContract],
+    args: [bridgeSender, targetChainEid, targetContract],
   });
 
   console.log(`  Transaction hash: ${hash}`);
@@ -144,12 +146,12 @@ async function main(): Promise<void> {
     transactionHash: hash,
     config: {
       bridgeSenderAddress: bridgeSender,
-      targetChainEid: BASE_SEPOLIA_LZ_EID,
+      targetChainEid,
       targetContract,
     },
   };
 
-  console.log('\n✅ StringSender deployed successfully!');
+  console.log('\nStringSender deployed successfully.');
   console.log('\nDeployment Result:');
   console.log(JSON.stringify(result, null, 2));
 
@@ -165,6 +167,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error('\n❌ Deployment failed:', error);
+  console.error('\nDeployment failed:', error);
   process.exit(1);
 });
