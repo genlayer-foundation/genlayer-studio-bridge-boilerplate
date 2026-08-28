@@ -3,11 +3,12 @@ import { createAccount, createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
 const privateKey = process.env.PRIVATE_KEY;
-const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+const rpcUrl = process.env.GENLAYER_RPC_URL;
 
 if (!privateKey) {
   throw new Error('Missing PRIVATE_KEY env var');
 }
+if (!rpcUrl) throw new Error('Missing GENLAYER_RPC_URL env var');
 
 const account = createAccount(privateKey as `0x${string}`);
 console.log('Wallet address:', account.address);

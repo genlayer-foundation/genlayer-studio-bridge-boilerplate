@@ -39,7 +39,7 @@ class BridgeReceiver(gl.Contract):
     @gl.public.write
     def set_authorized_relayer(self, relayer_address: str, authorized: bool):
         self._only_owner()
-        self.authorized_relayers[relayer_address.lower()] = authorized
+        self.authorized_relayers[str(relayer_address).lower()] = authorized
 
     # Message Delivery (called by bridge service)
 
@@ -102,7 +102,7 @@ class BridgeReceiver(gl.Contract):
 
     @gl.public.view
     def is_relayer_authorized(self, relayer: str) -> bool:
-        return self.authorized_relayers.get(relayer.lower(), False)
+        return self.authorized_relayers.get(str(relayer).lower(), False)
 
     @gl.public.view
     def get_owner(self) -> str:

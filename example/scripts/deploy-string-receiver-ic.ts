@@ -22,7 +22,7 @@ function parseArgs(): { bridgeReceiver: string } {
   const bridgeReceiver = bridgeReceiverIndex !== -1 ? args[bridgeReceiverIndex + 1] : null;
 
   if (!bridgeReceiver) {
-    console.error('❌ Missing required argument: --bridge-receiver <BridgeReceiver_address>');
+    console.error('Missing required argument: --bridge-receiver <BridgeReceiver_address>');
     process.exit(1);
   }
 
@@ -32,14 +32,15 @@ function parseArgs(): { bridgeReceiver: string } {
 async function main(): Promise<void> {
   const { bridgeReceiver } = parseArgs();
 
-  console.log('🚀 Deploying StringReceiverIC to GenLayer...\n');
+  console.log('Deploying StringReceiverIC to GenLayer...\n');
 
   const privateKey = process.env.PRIVATE_KEY;
-  const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+  const rpcUrl = process.env.GENLAYER_RPC_URL;
 
   if (!privateKey) {
     throw new Error('Missing PRIVATE_KEY environment variable');
   }
+  if (!rpcUrl) throw new Error('Missing required environment variable: GENLAYER_RPC_URL');
 
   console.log('Configuration:');
   console.log(`  RPC URL: ${rpcUrl}`);
@@ -84,7 +85,7 @@ async function main(): Promise<void> {
     throw new Error('Failed to get contract address from receipt');
   }
 
-  console.log('\n✅ StringReceiverIC deployed successfully!');
+  console.log('\nStringReceiverIC deployed successfully.');
   console.log(`  Contract address: ${contractAddress}`);
 
   console.log('\n📝 Next steps:');
@@ -96,6 +97,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error('\n❌ Deployment failed:', error);
+  console.error('\nDeployment failed:', error);
   process.exit(1);
 });

@@ -132,8 +132,8 @@ OWNER_ADDRESS=0x...
 CALLER_ADDRESS=0x...
 
 # LayerZero endpoints
-ZKSYNCSEPOLIATESTNET_ENDPOINT=0xe2Ef622A13e71D9Dd2BBd12cd4b27e1516FA8a09
-BASESEPOLIATESTNET_ENDPOINT=0x6EDCE65403992e310A62460808c4b910D972f10f
+ZKSYNCSEPOLIATESTNET_ENDPOINT=<LayerZero endpoint for the selected zkSync Sepolia deployment>
+BASESEPOLIATESTNET_ENDPOINT=<LayerZero endpoint for the selected Base Sepolia deployment>
 
 # Contract addresses for configuration scripts
 BRIDGE_FORWARDER_ADDRESS=0x...

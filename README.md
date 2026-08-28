@@ -5,7 +5,7 @@
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Status](https://img.shields.io/badge/status-beta-orange.svg)
 
-This boilerplate provides the complete infrastructure to connect **GenLayer Intelligent Contracts** with **EVM** chains (Base, Ethereum, etc.) via **LayerZero V2**. It enables any blockchain to offload complex, non-deterministic work—AI reasoning, web access, data verification—to GenLayer and receive verified results.
+This boilerplate provides infrastructure to connect **GenLayer Intelligent Contracts** with **EVM** chains through **LayerZero V2**. It enables a blockchain to offload non-deterministic work such as AI reasoning, web access, and data verification to GenLayer.
 
 ## 📚 Table of Contents
 
@@ -136,7 +136,7 @@ To bridge intelligence to your dApp, you need:
   - **Base Sepolia** (Example Target Chain)
   - **ZKsync Era Sepolia** (Hub Chain)
 
-## 🚀 Deployment Guide
+## Deployment Guide
 
 Follow these steps to deploy your own instance of the bridge infrastructure.
 
@@ -248,9 +248,10 @@ BRIDGE_RECEIVER_IC_ADDRESS=<GenLayer BridgeReceiver address>
 DEPLOYMENT_MANIFEST=<path to the generated network manifest>
 ```
 
-The checked-in file under `service/network-manifests/` is an evidence example
-only. The profile checker verifies the generated addresses against live RPCs
-before the relay is started.
+No deployment manifest is committed. Generated manifests are local runtime
+configuration and are ignored by Git because they contain deployment-specific
+addresses. The profile checker verifies the generated addresses against live
+RPCs before the relay is started.
 
 Start the relay:
 

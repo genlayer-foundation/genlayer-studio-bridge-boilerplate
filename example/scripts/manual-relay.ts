@@ -3,7 +3,7 @@ import { createAccount, createClient } from 'genlayer-js';
 import { studionet } from 'genlayer-js/chains';
 
 const privateKey = process.env.PRIVATE_KEY;
-const rpcUrl = process.env.GENLAYER_RPC_URL || 'https://studio.genlayer.com/api';
+const rpcUrl = process.env.GENLAYER_RPC_URL;
 const bridgeReceiverAddress = process.env.BRIDGE_RECEIVER_IC_ADDRESS;
 
 if (!privateKey) {
@@ -12,6 +12,7 @@ if (!privateKey) {
 if (!bridgeReceiverAddress) {
   throw new Error('Missing BRIDGE_RECEIVER_IC_ADDRESS env var');
 }
+if (!rpcUrl) throw new Error('Missing GENLAYER_RPC_URL env var');
 
 const account = createAccount(privateKey as `0x${string}`);
 const client = createClient({
@@ -27,14 +28,15 @@ const client = createClient({
 async function main() {
   // Get params from env or CLI args
   const messageId = process.env.MESSAGE_ID || process.argv[2];
-  const srcChainId = 84532; // Base Sepolia
-  const srcSender = process.env.OWNER_ADDRESS || process.argv[3];
-  const targetContract = process.env.TARGET_CONTRACT || process.argv[4];
-  const dataHex = process.env.MESSAGE_DATA || process.argv[5];
+  const srcChainIdValue = process.env.SOURCE_CHAIN_ID || process.argv[3];
+  const srcChainId = Number(srcChainIdValue);
+  const srcSender = process.env.OWNER_ADDRESS || process.argv[4];
+  const targetContract = process.env.TARGET_CONTRACT || process.argv[5];
+  const dataHex = process.env.MESSAGE_DATA || process.argv[6];
 
-  if (!messageId || !srcSender || !targetContract || !dataHex) {
-    console.error('Usage: manual-relay.ts <messageId> <srcSender> <targetContract> <dataHex>');
-    console.error('Or set MESSAGE_ID, OWNER_ADDRESS, TARGET_CONTRACT, MESSAGE_DATA env vars');
+  if (!messageId || !Number.isSafeInteger(srcChainId) || srcChainId <= 0 || !srcSender || !targetContract || !dataHex) {
+    console.error('Usage: manual-relay.ts <messageId> <sourceChainId> <srcSender> <targetContract> <dataHex>');
+    console.error('Or set MESSAGE_ID, SOURCE_CHAIN_ID, OWNER_ADDRESS, TARGET_CONTRACT, MESSAGE_DATA env vars');
     process.exit(1);
   }
 
