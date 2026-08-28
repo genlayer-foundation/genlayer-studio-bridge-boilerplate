@@ -15,7 +15,7 @@ This boilerplate provides infrastructure to connect **GenLayer Intelligent Contr
 - [Repository Structure](#-repository-structure)
 - [Key Contracts](#-key-contracts)
 - [Prerequisites](#-prerequisites)
-- [Deployment Guide](#-deployment-guide)
+- [Deployment Guide](#deployment-guide)
   - [1. Installation](#1-installation)
   - [2. Configuration](#2-configuration)
   - [3. Deploy EVM Infrastructure](#3-deploy-evm-infrastructure)

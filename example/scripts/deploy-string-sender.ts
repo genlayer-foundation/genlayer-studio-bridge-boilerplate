@@ -13,7 +13,7 @@
  *     --target-contract <string_receiver_address>
  *
  * Environment variables:
- *   GENLAYER_RPC_URL - GenLayer RPC endpoint (default: https://studio.genlayer.com/api)
+ *   GENLAYER_RPC_URL - GenLayer RPC endpoint
  *   PRIVATE_KEY - Deployer private key
  */
 

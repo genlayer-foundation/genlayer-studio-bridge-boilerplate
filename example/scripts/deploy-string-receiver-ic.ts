@@ -3,7 +3,7 @@
  * Deploy StringReceiverIC intelligent contract to GenLayer.
  *
  * Usage:
- *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio.genlayer.com/api
+ *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=<GenLayer RPC endpoint>
  *   npx tsx deploy-string-receiver-ic.ts --bridge-receiver <BridgeReceiver_address>
  */
 

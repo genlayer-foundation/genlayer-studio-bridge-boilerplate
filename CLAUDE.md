@@ -105,7 +105,7 @@ ZKsync Era Mainnet: 30165    Base Mainnet: 30184
 ```bash
 # RPC URLs
 FORWARDER_NETWORK_RPC_URL=https://sepolia.era.zksync.dev
-GENLAYER_RPC_URL=https://studio.genlayer.com/api
+GENLAYER_RPC_URL=<GenLayer RPC endpoint for the selected network>
 ZKSYNC_RPC_URL=https://sepolia.era.zksync.dev
 
 # GenLayer → EVM contracts

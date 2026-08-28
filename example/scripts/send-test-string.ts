@@ -3,7 +3,7 @@
  * Send a test string message from GenLayer StringSender.
  *
  * Usage:
- *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=https://studio.genlayer.com/api
+ *   export PRIVATE_KEY=0x... GENLAYER_RPC_URL=<GenLayer RPC endpoint>
  *   npx tsx send-test-string.ts --address <StringSender_address> --message "Hello Base!"
  */
 
