@@ -45,7 +45,7 @@ async function main() {
     if (Number(zkSyncEid) !== expectedDestinationEid) {
       console.warn("⚠️  MISMATCH: zkSync EID is incorrect!");
     } else {
-      console.log("✅ zkSync EID matches.");
+      console.log("zkSync EID matches.");
     }
 
     console.log(`- Configured Receiver: ${zkSyncBridgeReceiver}`);
@@ -53,9 +53,9 @@ async function main() {
     // Try to find what the receiver should be
     // We can't easily know the zkSync address here unless provided, but we can check if it is empty
     if (zkSyncBridgeReceiver === ethers.ZeroHash) {
-      console.error("❌ Receiver address is empty (0x00...00)!");
+      console.error("Receiver address is empty (0x00...00).");
     } else {
-      console.log("✅ Receiver address is set (value verification requires zkSync address).");
+      console.log("Receiver address is set (value verification requires zkSync address).");
     }
   }
 
@@ -90,10 +90,10 @@ async function main() {
     console.log(`- Configured Forwarder: ${trustedForwarder}`);
 
     if (trustedForwarder === ethers.ZeroHash) {
-      console.error("❌ NO TRUSTED FORWARDER SET for the configured source EID!");
+      console.error("No trusted forwarder is set for the configured source EID.");
       console.log("   To fix: Set the BridgeSender address from Base as the trusted forwarder.");
     } else {
-      console.log("✅ Trusted forwarder is set.");
+      console.log("Trusted forwarder is set.");
       console.log("   Ensure this matches the bytes32 version of the BridgeSender address on Base.");
     }
 
