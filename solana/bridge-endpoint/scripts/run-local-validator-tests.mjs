@@ -1,11 +1,11 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import net from "node:net";
 
 const PROGRAM_ID = "H4bMLhY9L8rB8kQrMbSeyy2KbQ2CYQnSvxqPro6vsy4J";
-const programPath = resolve("target/deploy/bridge_endpoint.so");
+const programPath = resolve("target/test-deploy/bridge_endpoint.so");
 const walletPath = resolve("target/test-wallet.json");
 const ledgerPath = resolve(".anchor/test-ledger");
 
@@ -15,6 +15,8 @@ if (!existsSync(programPath)) {
 if (!existsSync(walletPath)) {
   throw new Error(`missing test wallet: ${walletPath}`);
 }
+
+mkdirSync(ledgerPath, { recursive: true });
 
 const rpcPort = await findAvailablePort(8899);
 const faucetPort = await findAvailablePort(9900);
@@ -27,9 +29,10 @@ const validator = spawn(
     "--quiet",
     "--ledger",
     ledgerPath,
-    "--bpf-program",
+    "--upgradeable-program",
     PROGRAM_ID,
     programPath,
+    walletPath,
     "--rpc-port",
     String(rpcPort),
     "--faucet-port",

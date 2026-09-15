@@ -1,5 +1,5 @@
 # v0.2.0
-# { "Depends": "py-genlayer:1j12s63yfjpva9ik2xgnffgrs6v44y1f52jvj9w7xvdn7qckd379" }
+# { "Seq": [{ "Depends": "py-genlayer:1j12s63yfjpva9ik2xgnffgrs6v44y1f52jvj9w7xvdn7qckd379" }] }
 
 """GenLayerOutbox: stores GenLayer-originated bridge messages for the relay service."""
 
@@ -48,6 +48,7 @@ class GenLayerOutbox(gl.Contract):
         sender_32 = self._address_to_bytes32(gl.message.sender_address)
         hasher = Keccak256()
         hasher.update(GENLAYER_SOURCE_EID.to_bytes(4, "big"))
+        hasher.update(self._address_to_bytes32(gl.message.contract_address))
         hasher.update(sender_32)
         hasher.update(target_32)
         hasher.update(payload)

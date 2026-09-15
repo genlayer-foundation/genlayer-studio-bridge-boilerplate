@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-import { SystemProgram } from "@solana/web3.js";
+import { PublicKey, SystemProgram } from "@solana/web3.js";
 import {
-  accountExists,
+  programAccountExists,
   getBridgePdas,
   getConfig,
   getConnection,
@@ -31,7 +31,7 @@ console.log("  LzReceiveTypes PDA:", pdas.lzReceiveTypesAccounts.toBase58());
 console.log("  LayerZero OApp registry PDA:", lzPdas.oappRegistry.toBase58());
 console.log("  Mode:", SEND ? "send" : "simulate-only");
 
-if (await accountExists(connection, pdas.store)) {
+if (await programAccountExists(connection, pdas.store, program.programId)) {
   console.log("\nStore PDA already exists; initialization is complete.");
   process.exit(0);
 }
@@ -51,6 +51,10 @@ const instruction = await program.methods
   .init(payer.publicKey, config.endpointProgram, config.localEid)
   .accounts({
     payer: payer.publicKey,
+    programData: PublicKey.findProgramAddressSync(
+      [program.programId.toBuffer()],
+      new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111"),
+    )[0],
     store: pdas.store,
     lzReceiveTypesAccounts: pdas.lzReceiveTypesAccounts,
     systemProgram: SystemProgram.programId,

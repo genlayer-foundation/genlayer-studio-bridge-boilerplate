@@ -191,7 +191,13 @@ cargo test
 npm test
 ```
 
-CI runs the same coverage on pull requests and pushes to `main`: smart-contract
+GenLayer outbox ID regression (direct mode, no RPC required):
+
+```bash
+uv run --python 3.12 --with genlayer-test==0.29.2 --with pytest pytest intelligent-contracts/tests -q
+```
+
+CI runs these checks on pull requests and pushes to `main`: smart-contract
 tests and typecheck, relay service tests and typecheck, and Solana Rust,
 TypeScript, and Anchor validator tests.
 
@@ -243,6 +249,8 @@ ZKSYNC_RPC_URL=
 GENLAYER_RPC_URL=
 PRIVATE_KEY=
 BRIDGE_SYNC_INTERVAL="*/5 * * * *"
+# Solana lzReceive allowance in lamports; covers store-and-claim Message rent.
+SOLANA_LZ_RECEIVE_VALUE=10000000
 EVM_TO_GL_SYNC_INTERVAL="*/1 * * * *"
 ```
 

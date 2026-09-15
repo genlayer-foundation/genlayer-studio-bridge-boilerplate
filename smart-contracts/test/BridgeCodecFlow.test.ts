@@ -205,6 +205,18 @@ describe("clean bridge roles", function () {
       expect(await inbox.isMessageRelayed(messageId)).to.equal(true);
     });
 
+    it("rejects non-address GenLayer targets before adding them to the queue", async function () {
+      const messageId = ethers.keccak256(ethers.toUtf8Bytes("bad-target"));
+      const message = encodeBridgeMessage({
+        messageId, srcEid, srcSender: addressToBytes32(user.address),
+        target: "0x01" + "00".repeat(31), payload: "0x1234",
+      });
+      await expect(
+        endpoint.callLzReceive(await inbox.getAddress(), origin, ethers.ZeroHash, message, executor.address, "0x")
+      ).to.be.revertedWith("HubInboundInbox: target not address");
+      expect(await inbox.getMessageCount()).to.equal(0);
+    });
+
     it("rejects duplicate messages and srcEid mismatches", async function () {
       const messageId = ethers.keccak256(ethers.toUtf8Bytes("dup"));
       const message = encodeBridgeMessage({

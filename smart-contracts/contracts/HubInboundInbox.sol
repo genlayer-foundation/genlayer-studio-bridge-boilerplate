@@ -82,6 +82,7 @@ contract HubInboundInbox is ILayerZeroReceiver, Ownable, ReentrancyGuard {
         require(message.messageId != bytes32(0), "HubInboundInbox: messageId=0");
         require(message.srcEid == origin.srcEid, "HubInboundInbox: srcEid mismatch");
         require(message.target != bytes32(0), "HubInboundInbox: target=0");
+        require(BridgeCodec.isAddressBytes32(message.target), "HubInboundInbox: target not address");
         require(messages[message.messageId].messageId == bytes32(0), "HubInboundInbox: duplicate message");
 
         messages[message.messageId] = PendingMessage({

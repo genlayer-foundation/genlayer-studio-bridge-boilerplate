@@ -122,8 +122,12 @@ export class GenLayerToEvmRelay {
       );
 
       // Build LayerZero options
+      // Solana store-and-claim creates a Message PDA; value covers executor rent.
+      const receiveValue = [30168, 40168].includes(message.dstEid)
+        ? BigInt(process.env.SOLANA_LZ_RECEIVE_VALUE ?? "10000000")
+        : 0n;
       const optionsHex = Options.newOptions()
-        .addExecutorLzReceiveOption(1_000_000, 0)
+        .addExecutorLzReceiveOption(1_000_000, receiveValue)
         .toHex();
 
       // Get fee quote

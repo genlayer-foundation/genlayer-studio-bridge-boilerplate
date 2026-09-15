@@ -195,7 +195,7 @@ async function setSenderReceiver() {
 async function setHubInbox() {
   const outboxAddress = getEnvVar("EVM_CHAIN_OUTBOX_ADDRESS");
   const hubInboxAddress = getEnvVar("HUB_INBOUND_INBOX_ADDRESS");
-  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40305"));
+  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40245"));
 
   validateAddress(outboxAddress, "EVM_CHAIN_OUTBOX_ADDRESS");
   validateAddress(hubInboxAddress, "HUB_INBOUND_INBOX_ADDRESS");
@@ -216,7 +216,7 @@ async function setHubInbox() {
 async function setTrustedHubRouter() {
   const inboxAddress = getEnvVar("EVM_CHAIN_INBOX_ADDRESS");
   const hubRouterAddress = getEnvVar("HUB_OUTBOUND_ROUTER_ADDRESS");
-  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40305"));
+  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40245"));
 
   validateAddress(inboxAddress, "EVM_CHAIN_INBOX_ADDRESS");
   validateAddress(hubRouterAddress, "HUB_OUTBOUND_ROUTER_ADDRESS");

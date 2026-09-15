@@ -41,8 +41,7 @@ const targetValue = getArgValue(
   process.env.SOLANA_TO_HUB_TARGET_BYTES32 ||
     process.env.SOLANA_TO_HUB_TARGET ||
     process.env.GENLAYER_TEST_TARGET_BYTES32 ||
-    process.env.GENLAYER_TEST_TARGET ||
-    payer.publicKey.toBase58(),
+    process.env.GENLAYER_TEST_TARGET,
 );
 const lzReceiveGas = Number(
   getArgValue("--lz-receive-gas", process.env.SOLANA_TO_HUB_LZ_RECEIVE_GAS || "250000"),
@@ -53,6 +52,9 @@ const lzReceiveValue = BigInt(
 const computeUnits = Number(getArgValue("--compute-units", process.env.SOLANA_TO_HUB_COMPUTE_UNITS || "1000000"));
 
 const target = Buffer.from(parseBytes32(targetValue, "SOLANA_TO_HUB_TARGET"));
+if (target.subarray(0, 12).some((byte) => byte !== 0) || target.every((byte) => byte === 0)) {
+  throw new Error("SOLANA_TO_HUB_TARGET must be a nonzero GenLayer address (20 bytes, right-aligned in bytes32)");
+}
 const payload = Buffer.from(payloadText, "utf8");
 const options = Buffer.from(
   Options.newOptions().addExecutorLzReceiveOption(lzReceiveGas, lzReceiveValue).toBytes(),

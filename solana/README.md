@@ -39,8 +39,6 @@ It only needs to produce this envelope and a receiver-specific byte payload.
 - `lz_receive`: accepts the LayerZero-compatible `LzReceiveParams`, verifies
   the peer, decodes the envelope, and either stores or directly delivers the
   message.
-- `lz_receive_store`: local/test helper for the explicit store path.
-- `lz_receive_direct`: local/test helper for the explicit direct path.
 - `claim_message`: claims a stored message into the registered receiver state.
 - `lz_receive_types_info` and `lz_receive_types_v2`: expose the account discovery hooks expected by the LayerZero V2 Solana executor.
 
@@ -210,9 +208,14 @@ SEND=1 npx hardhat run scripts/send-hub-to-solana-test.ts --network baseSepoliaT
 The smoke script sends a canonical bridge envelope through `HubOutboundRouter`
 and LayerZero. For the direct receiver mode, `SOLANA_LZ_RECEIVE_VALUE` should
 stay `0`; receiver registration pre-creates the receiver state, and the direct
-path avoids per-message account allocation during executor delivery. If a future
-receiver mode allocates Solana accounts inside `lz_receive`, it must either
-pre-create those accounts or use an execution path that can fund rent.
+path avoids per-message account allocation during executor delivery. Store-and-claim
+allocates a 1,139-byte Message PDA during `lz_receive`, so set
+`SOLANA_LZ_RECEIVE_VALUE=10000000` (0.01 SOL) for that mode. The relay service
+uses this allowance by default for Solana destinations; it can be set to `0`
+when all registered receivers use direct mode. Adjust the allowance if account
+size or rent requirements change. The executor charges account rent against this
+[value allowance](https://docs.layerzero.network/v2/developers/solana/troubleshooting/faq).
+A prefunded Message PDA is topped up only for the missing rent.
 
 Check Solana delivery with:
 
@@ -227,7 +230,7 @@ For Solana Devnet -> Base Sepolia, configure `solana/bridge-endpoint/.env.testne
 HUB_EID=40245
 HUB_OUTBOUND_ROUTER_ADDRESS=0x3550385d7165C05B607a4E67b38C25A042D2fe10
 HUB_INBOUND_INBOX_ADDRESS=0xbA527DEF67a5Cc274Cf2cFaC8Bf1BAAda36eccc0
-SOLANA_TO_HUB_TARGET_BYTES32=0xaf662a0d7bc9bad8b5a37fc399299fdad561f3cc857a96ec024150d79612b64d
+SOLANA_TO_HUB_TARGET=0x<deployed-GenLayer-target-contract>
 SOLANA_TO_HUB_PAYLOAD=hello base from solana live
 ```
 
@@ -280,3 +283,10 @@ testnet route IDs for some destinations, so the script checks both `dstEid` and
 April 30, 2026 smoke run. zkSync Sepolia `40305` maps to `10305`; if that route
 is absent, Solana -> zkSync cannot be quoted even when the OApp path accounts
 are initialized.
+
+Initialization must be signed by the program's current upgrade authority.
+The devnet initialization script uses the deployment wallet for this signature.
+Local validator tests load an upgradeable program with the test wallet as its
+upgrade authority. Test binaries go to `target/test-deploy`, separately from
+deployment artifacts in `target/deploy`. Only test builds enable `mock-endpoint`; production builds
+always call the configured LayerZero Endpoint to verify delivery.

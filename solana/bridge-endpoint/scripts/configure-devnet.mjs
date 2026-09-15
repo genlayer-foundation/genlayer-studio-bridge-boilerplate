@@ -2,7 +2,7 @@
 
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import {
-  accountExists,
+  programAccountExists,
   bytesToHex,
   getBridgePdas,
   getConfig,
@@ -53,7 +53,7 @@ if (REGISTER_RECEIVER) {
 }
 console.log("  Mode:", SEND ? "send" : "simulate-only");
 
-if (!(await accountExists(connection, pdas.store))) {
+if (!(await programAccountExists(connection, pdas.store, program.programId))) {
   throw new Error("Store PDA does not exist. Run npm run devnet:init first.");
 }
 

@@ -5,7 +5,8 @@
   "scripts": {
     "build": "anchor build",
     "pretest": "node scripts/ensure-test-wallet.mjs",
-    "test": "npm run build && node scripts/run-local-validator-tests.mjs",
+    "test": "npm run build && npm run test:scripts && SBF_OUT_PATH=\"$PWD/target/test-deploy\" anchor build -- --features mock-endpoint && node scripts/run-local-validator-tests.mjs",
+    "test:scripts": "node --test tests/*.test.mjs",
     "test:anchor": "ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.test.ts",
     "devnet:deploy-program": "node scripts/deploy-program-devnet.mjs",
     "devnet:init": "node scripts/init-devnet.mjs",

@@ -1,5 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { expect } from "chai";
+import { createHash } from "node:crypto";
 import {
   Commitment,
   Keypair,
@@ -7,6 +8,7 @@ import {
   PublicKey,
   SystemProgram,
   Transaction,
+  TransactionInstruction,
 } from "@solana/web3.js";
 
 const STORE_SEED = "Store";
@@ -31,6 +33,9 @@ describe("bridge_endpoint", () => {
 
   const program = (anchor.workspace as any).bridgeEndpoint as any;
   const payer = provider.wallet.publicKey;
+  const [programData] = PublicKey.findProgramAddressSync(
+    [program.programId.toBuffer()], new PublicKey("BPFLoaderUpgradeab1e11111111111111111111111"),
+  );
   const hubSender = Buffer.alloc(32, 0x22);
   const hubInboundInbox = Buffer.alloc(32, 0x55);
   const sourceSender = Buffer.alloc(32, 0x44);
@@ -63,10 +68,30 @@ describe("bridge_endpoint", () => {
       commitment,
     );
 
+    await provider.sendAndConfirm(new Transaction().add(SystemProgram.transfer({
+      fromPubkey: payer, toPubkey: store,
+      lamports: await provider.connection.getMinimumBalanceForRentExemption(0),
+    })));
+    const attacker = Keypair.generate();
+    await provider.sendAndConfirm(new Transaction().add(SystemProgram.transfer({
+      fromPubkey: payer, toPubkey: attacker.publicKey, lamports: LAMPORTS_PER_SOL,
+    })));
+    await expectRejects(
+      program.methods.init(attacker.publicKey, program.programId, SOLANA_EID)
+        .accounts({ payer: attacker.publicKey, programData, store, lzReceiveTypesAccounts,
+          systemProgram: SystemProgram.programId })
+        .signers([attacker]).rpc(),
+      "upgrade authority",
+    );
+    const uninitializedStore = await provider.connection.getAccountInfo(store);
+    expect(uninitializedStore!.owner.equals(SystemProgram.programId)).to.equal(true);
+    expect(uninitializedStore!.data.length).to.equal(0);
+
     await program.methods
       .init(payer, program.programId, SOLANA_EID)
       .accounts({
         payer,
+        programData,
         store,
         lzReceiveTypesAccounts,
         systemProgram: SystemProgram.programId,
@@ -94,6 +119,37 @@ describe("bridge_endpoint", () => {
       .rpc();
   });
 
+  it("rejects fabricated messages through the retired receive instructions", async () => {
+    for (const [name, mode] of [["lz_receive_store", STORE_AND_CLAIM], ["lz_receive_direct", DIRECT]] as const) {
+      const target = Keypair.generate().publicKey;
+      const messageId = Buffer.alloc(32, mode + 0x70);
+      const [receiver] = receiverPda(target);
+      const [receiverState] = receiverStatePda(target);
+      const [message] = messagePda(messageId);
+      const [status] = messageStatusPda(messageId);
+      await program.methods.registerReceiver(target, mode).accounts({
+        admin: payer, store, receiver, receiverState, systemProgram: SystemProgram.programId,
+      }).rpc();
+      const encoded = encodeBridgeEnvelope(messageId, HUB_EID, hubSender, target, Buffer.from("forged"));
+      const eid = Buffer.alloc(4); eid.writeUInt32LE(HUB_EID);
+      const length = Buffer.alloc(4); length.writeUInt32LE(encoded.length);
+      const accounts = [payer, store, peer, receiver,
+        ...(mode === STORE_AND_CLAIM ? [message] : [status, receiverState]), SystemProgram.programId];
+      const instruction = new TransactionInstruction({
+        programId: program.programId,
+        keys: accounts.map((pubkey, index) => ({ pubkey, isSigner: index === 0,
+          isWritable: index === 0 || (index >= 4 && index < accounts.length - 1) })),
+        data: Buffer.concat([createHash("sha256").update(`global:${name}`).digest().subarray(0, 8),
+          eid, target.toBuffer(), messageId, length, encoded]),
+      });
+      await expectRejects(provider.sendAndConfirm(new Transaction().add(instruction)), "Fallback functions are not supported");
+      expect(await provider.connection.getAccountInfo(message)).to.equal(null);
+      expect(await provider.connection.getAccountInfo(status)).to.equal(null);
+      const state = await program.account.receiverState.fetch(receiverState);
+      expect(Buffer.from(state.lastPayload).length).to.equal(0);
+    }
+  });
+
   it("stores a LayerZero-delivered bridge envelope and claims it", async () => {
     const target = Keypair.generate().publicKey;
     const messageId = Buffer.alloc(32, 0x11);
@@ -116,6 +172,11 @@ describe("bridge_endpoint", () => {
         systemProgram: SystemProgram.programId,
       })
       .rpc();
+
+    await provider.sendAndConfirm(new Transaction().add(SystemProgram.transfer({
+      fromPubkey: payer, toPubkey: message,
+      lamports: await provider.connection.getMinimumBalanceForRentExemption(0),
+    })));
 
     await program.methods
       .lzReceive(params)
@@ -328,7 +389,7 @@ describe("bridge_endpoint", () => {
   });
 
   it("sends Solana-originated messages through the outbound peer path", async () => {
-    const target = Buffer.alloc(32, 0x66);
+    const target = Buffer.concat([Buffer.alloc(12), Buffer.alloc(20, 0x66)]);
     const payload = Buffer.from("hello from solana", "utf8");
     const options = Buffer.alloc(0);
 
@@ -349,6 +410,11 @@ describe("bridge_endpoint", () => {
       .view();
     expect(new anchor.BN(fee.nativeFee).toNumber()).to.equal(0);
     expect(new anchor.BN(fee.lzTokenFee).toNumber()).to.equal(0);
+
+    await expectRejects(program.methods.sendToGenLayer({
+      dstEid: HUB_EID, target: [...Buffer.alloc(32, 0x66)], payload, options,
+      nativeFee: new anchor.BN(0), lzTokenFee: new anchor.BN(0),
+    }).accounts({ payer, store, outboundPeer, endpoint: program.programId }).rpc(), "GenLayer address");
 
     const before = await program.account.store.fetch(store);
     const signature = await program.methods
@@ -660,7 +726,7 @@ async function expectRejects(promise: Promise<unknown>, message: string): Promis
   try {
     await promise;
   } catch (error) {
-    expect(String(error)).to.include(message);
+    expect(String(error), String(error)).to.include(message);
     return;
   }
   throw new Error(`expected rejection including ${message}`);

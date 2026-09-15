@@ -3,7 +3,8 @@
 import { createHash } from "node:crypto";
 import { SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import {
-  accountExists,
+  programAccountExists,
+  BRIDGE_PROGRAM_ID,
   getArgValue,
   getBridgePdas,
   getConfig,
@@ -59,14 +60,14 @@ console.log("  ULN SendConfig:", sendConfig.toBase58());
 console.log("  ULN ReceiveConfig:", receiveConfig.toBase58());
 console.log("  Mode:", SEND ? "send" : "simulate-only");
 
-if (!(await accountExists(connection, pdas.store))) {
+if (!(await programAccountExists(connection, pdas.store, BRIDGE_PROGRAM_ID))) {
   throw new Error("Store PDA does not exist. Run npm run devnet:init first.");
 }
 
 const instructions = [];
 
-const sendConfigExists = await accountExists(connection, sendConfig);
-const receiveConfigExists = await accountExists(connection, receiveConfig);
+const sendConfigExists = await programAccountExists(connection, sendConfig, ulnProgram);
+const receiveConfigExists = await programAccountExists(connection, receiveConfig, ulnProgram);
 if (!sendConfigExists && !receiveConfigExists) {
   instructions.push(initUlnConfigInstruction());
 } else if (sendConfigExists && receiveConfigExists) {
@@ -75,21 +76,21 @@ if (!sendConfigExists && !receiveConfigExists) {
   throw new Error("LayerZero ULN app config is partially initialized; inspect SendConfig/ReceiveConfig before continuing.");
 }
 
-if (!(await accountExists(connection, sendLibraryConfig))) {
+if (!(await programAccountExists(connection, sendLibraryConfig, config.endpointProgram))) {
   instructions.push(initSendLibraryInstruction());
 } else {
   console.log("  Send library config already exists; skipping init_send_library");
 }
 
-if (!(await accountExists(connection, receiveLibraryConfig))) {
+if (!(await programAccountExists(connection, receiveLibraryConfig, config.endpointProgram))) {
   instructions.push(initReceiveLibraryInstruction());
 } else {
   console.log("  Receive library config already exists; skipping init_receive_library");
 }
 
 for (const remote of remoteOapps) {
-  const nonceExists = await accountExists(connection, remote.nonce);
-  const pendingNonceExists = await accountExists(connection, remote.pendingInboundNonce);
+  const nonceExists = await programAccountExists(connection, remote.nonce, config.endpointProgram);
+  const pendingNonceExists = await programAccountExists(connection, remote.pendingInboundNonce, config.endpointProgram);
   if (!nonceExists && !pendingNonceExists) {
     instructions.push(initNonceInstruction(remote));
   } else if (nonceExists && pendingNonceExists) {

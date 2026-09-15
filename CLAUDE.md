@@ -1,7 +1,8 @@
 # CLAUDE.md
 
 This repo is a bidirectional bridge between GenLayer Intelligent Contracts and
-external chains using LayerZero V2 with zkSync Era as the hub chain.
+external chains using LayerZero V2 with an EVM hub chain. Base Sepolia (EID 40245) is the tested bidirectional
+Solana hub.
 
 ## Current Architecture
 
@@ -24,8 +25,8 @@ in the repo for compatibility. New work should use the role-named contracts.
 
 - `intelligent-contracts/GenLayerOutbox.py`: stores GenLayer-originated messages.
 - `intelligent-contracts/GenLayerInbox.py`: receives relayed messages into GenLayer.
-- `smart-contracts/contracts/HubOutboundRouter.sol`: zkSync outbound router.
-- `smart-contracts/contracts/HubInboundInbox.sol`: zkSync inbound message store.
+- `smart-contracts/contracts/HubOutboundRouter.sol`: EVM hub outbound router.
+- `smart-contracts/contracts/HubInboundInbox.sol`: EVM hub inbound message store.
 - `smart-contracts/contracts/EvmChainOutbox.sol`: EVM source endpoint.
 - `smart-contracts/contracts/EvmChainInbox.sol`: EVM destination endpoint.
 - `smart-contracts/contracts/libs/BridgeCodec.sol`: canonical envelope codec.
@@ -66,8 +67,8 @@ npm test
 ```bash
 cd smart-contracts
 
-CONTRACT=hub-inbound npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
-CONTRACT=hub-outbound npx hardhat run scripts/deploy.ts --network zkSyncSepoliaTestnet
+CONTRACT=hub-inbound npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
+CONTRACT=hub-outbound npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 CONTRACT=evm-outbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 CONTRACT=evm-inbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestnet
 ```
@@ -75,9 +76,9 @@ CONTRACT=evm-inbox npx hardhat run scripts/deploy.ts --network baseSepoliaTestne
 ## Configure
 
 ```bash
-ACTION=set-trusted-source npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
-ACTION=set-destination-endpoint npx hardhat run scripts/configure.ts --network zkSyncSepoliaTestnet
+ACTION=set-trusted-source npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-authorized-relayer npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
+ACTION=set-destination-endpoint npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 ACTION=set-hub-inbox npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 ACTION=set-trusted-hub-router npx hardhat run scripts/configure.ts --network baseSepoliaTestnet
 ```

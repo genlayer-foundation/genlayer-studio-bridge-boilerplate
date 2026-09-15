@@ -301,7 +301,7 @@ async function deployEvmChainOutbox() {
   validateAddress(networkInfo.endpointAddress, "LZ Endpoint");
   const ownerAddress = getEnvVar("OWNER_ADDRESS");
   const hubInboundInboxAddress = getEnvVar("HUB_INBOUND_INBOX_ADDRESS");
-  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40305"));
+  const hubEid = parseInt(getEnvVarOrDefault("HUB_EID", "40245"));
   validateAddress(ownerAddress, "Owner");
   validateAddress(hubInboundInboxAddress, "HubInboundInbox");
 

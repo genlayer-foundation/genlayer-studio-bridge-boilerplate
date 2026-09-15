@@ -16,7 +16,7 @@ export const LAYERZERO_ENDPOINT_PROGRAM_ID = new PublicKey(
 );
 export const LAYERZERO_ULN_PROGRAM_ID = new PublicKey("7a4WjyR8VZ7yZz5XJAKm39BUGn5iT9CKcv2pmG9tdXVH");
 export const SOLANA_EID = 40168;
-export const HUB_EID = 40305;
+export const HUB_EID = 40245;
 
 export const STORE_SEED = "Store";
 export const PEER_SEED = "Peer";
@@ -225,8 +225,9 @@ export function bytesToHex(bytes) {
   return `0x${Buffer.from(bytes).toString("hex")}`;
 }
 
-export async function accountExists(connection, pubkey) {
-  return (await connection.getAccountInfo(pubkey, "confirmed")) !== null;
+export async function programAccountExists(connection, pubkey, owner) {
+  const account = await connection.getAccountInfo(pubkey, "confirmed");
+  return account !== null && account.owner.equals(owner) && account.data.length > 0;
 }
 
 export async function simulateInstructions(connection, payerKeypair, instructions) {
@@ -251,13 +252,17 @@ export async function sendInstructions(connection, payerKeypair, instructions) {
     preflightCommitment: "confirmed",
     skipPreflight: false,
   });
-  await connection.confirmTransaction(
+  const confirmation = await connection.confirmTransaction(
     {
       signature,
       ...latestBlockhash,
     },
     "confirmed",
   );
+
+  if (confirmation.value.err) {
+    throw new Error(`Transaction ${signature} failed: ${JSON.stringify(confirmation.value.err)}`);
+  }
 
   return signature;
 }

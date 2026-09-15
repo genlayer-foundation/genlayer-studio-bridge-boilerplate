@@ -14,7 +14,7 @@ pub struct BridgeMessage {
     pub payload: Vec<u8>,
 }
 
-#[error_code]
+#[error_code(offset = 6100)]
 #[derive(PartialEq, Eq)]
 pub enum DecodeError {
     #[msg("Bridge envelope is shorter than the ABI head")]
@@ -159,6 +159,14 @@ fn word_from_u64(value: u64) -> [u8; 32] {
 mod tests {
     use super::*;
     use serde_json::Value;
+
+    #[test]
+    fn codec_and_endpoint_errors_have_distinct_codes() {
+        assert_ne!(
+            u32::from(DecodeError::TooShort),
+            u32::from(crate::BridgeEndpointError::SourceEidMismatch)
+        );
+    }
 
     fn encode_fixture(payload: &[u8]) -> Vec<u8> {
         let mut out = Vec::new();

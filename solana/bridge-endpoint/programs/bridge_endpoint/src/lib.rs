@@ -51,7 +51,7 @@ pub mod bridge_endpoint {
         lz_receive_types_accounts.alt = Pubkey::default();
         lz_receive_types_accounts.bump = ctx.bumps.lz_receive_types_accounts;
 
-        if endpoint_program != crate::ID {
+        if !cfg!(feature = "mock-endpoint") || endpoint_program != crate::ID {
             let bump_seed = [ctx.bumps.store];
             let signer_seeds: &[&[u8]] = &[STORE_SEED, &bump_seed];
             endpoint_register_oapp(
@@ -99,6 +99,10 @@ pub mod bridge_endpoint {
             BridgeEndpointError::PayloadTooLarge
         );
         require!(params.target != [0u8; 32], BridgeEndpointError::TargetZero);
+        require!(
+            params.target[..12] == [0u8; 12],
+            BridgeEndpointError::InvalidGenLayerTarget
+        );
 
         let store_key = ctx.accounts.store.key();
         let source_sender = ctx.accounts.payer.key().to_bytes();
@@ -124,7 +128,7 @@ pub mod bridge_endpoint {
             &params.payload,
         );
 
-        if ctx.accounts.store.endpoint_program != crate::ID {
+        if !cfg!(feature = "mock-endpoint") || ctx.accounts.store.endpoint_program != crate::ID {
             validate_endpoint_account(
                 ctx.accounts.store.endpoint_program,
                 ctx.accounts.endpoint.key(),
@@ -173,6 +177,10 @@ pub mod bridge_endpoint {
             BridgeEndpointError::PayloadTooLarge
         );
         require!(params.target != [0u8; 32], BridgeEndpointError::TargetZero);
+        require!(
+            params.target[..12] == [0u8; 12],
+            BridgeEndpointError::InvalidGenLayerTarget
+        );
 
         let source_sender = ctx.accounts.payer.key().to_bytes();
         let message = encode_bridge_envelope(
@@ -183,7 +191,7 @@ pub mod bridge_endpoint {
             &params.payload,
         );
 
-        if ctx.accounts.store.endpoint_program == crate::ID {
+        if cfg!(feature = "mock-endpoint") && ctx.accounts.store.endpoint_program == crate::ID {
             return Ok(MessagingFee::default());
         }
 
@@ -251,7 +259,7 @@ pub mod bridge_endpoint {
             BridgeEndpointError::MessageIdMismatch
         );
 
-        if ctx.accounts.store.endpoint_program != crate::ID {
+        if !cfg!(feature = "mock-endpoint") || ctx.accounts.store.endpoint_program != crate::ID {
             let bump_seed = [ctx.accounts.store.bump];
             let signer_seeds: &[&[u8]] = &[STORE_SEED, &bump_seed];
             endpoint_clear(
@@ -324,97 +332,6 @@ pub mod bridge_endpoint {
                 target,
             });
         }
-
-        Ok(())
-    }
-
-    pub fn lz_receive_store(
-        ctx: Context<LzReceiveStore>,
-        source_eid: u32,
-        target: Pubkey,
-        message_id: [u8; 32],
-        encoded_message: Vec<u8>,
-    ) -> Result<()> {
-        let decoded = validate_inbound(
-            source_eid,
-            target,
-            message_id,
-            &encoded_message,
-            &ctx.accounts.peer,
-        )?;
-        require!(
-            ctx.accounts.receiver.mode == RECEIVER_MODE_STORE_AND_CLAIM,
-            BridgeEndpointError::ReceiverModeMismatch
-        );
-        require!(
-            decoded.payload.len() <= MAX_PAYLOAD_LEN,
-            BridgeEndpointError::PayloadTooLarge
-        );
-
-        let message = &mut ctx.accounts.message;
-        message.initialized = true;
-        message.message_id = decoded.message_id;
-        message.source_eid = decoded.source_eid;
-        message.source_sender = decoded.source_sender;
-        message.target = target;
-        message.payload = decoded.payload;
-        message.claimed = false;
-        message.bump = ctx.bumps.message;
-
-        emit!(MessageStored {
-            message_id,
-            source_eid,
-            source_sender: decoded.source_sender,
-            target,
-        });
-
-        Ok(())
-    }
-
-    pub fn lz_receive_direct(
-        ctx: Context<LzReceiveDirect>,
-        source_eid: u32,
-        target: Pubkey,
-        message_id: [u8; 32],
-        encoded_message: Vec<u8>,
-    ) -> Result<()> {
-        let decoded = validate_inbound(
-            source_eid,
-            target,
-            message_id,
-            &encoded_message,
-            &ctx.accounts.peer,
-        )?;
-        require!(
-            ctx.accounts.receiver.mode == RECEIVER_MODE_DIRECT,
-            BridgeEndpointError::ReceiverModeMismatch
-        );
-        require!(
-            decoded.payload.len() <= MAX_PAYLOAD_LEN,
-            BridgeEndpointError::PayloadTooLarge
-        );
-
-        let status = &mut ctx.accounts.status;
-        status.message_id = message_id;
-        status.delivered = true;
-        status.bump = ctx.bumps.status;
-
-        apply_to_receiver(
-            &mut ctx.accounts.receiver_state,
-            target,
-            decoded.message_id,
-            decoded.source_eid,
-            decoded.source_sender,
-            decoded.payload,
-            ctx.bumps.receiver_state,
-        )?;
-
-        emit!(DirectMessageDelivered {
-            message_id,
-            source_eid,
-            source_sender: decoded.source_sender,
-            target,
-        });
 
         Ok(())
     }
@@ -560,6 +477,14 @@ pub mod bridge_endpoint {
 pub struct Init<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
+    #[account(
+        seeds = [crate::ID.as_ref()],
+        bump,
+        seeds::program = anchor_lang::solana_program::bpf_loader_upgradeable::ID,
+        constraint = program_data.upgrade_authority_address == Some(payer.key())
+            @ BridgeEndpointError::UnauthorizedInitializer
+    )]
+    pub program_data: Account<'info, ProgramData>,
     #[account(
         init,
         payer = payer,
@@ -707,72 +632,6 @@ pub struct LzReceive<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(source_eid: u32, target: Pubkey, message_id: [u8; 32])]
-pub struct LzReceiveStore<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    #[account(seeds = [STORE_SEED], bump = store.bump)]
-    pub store: Account<'info, Store>,
-    #[account(
-        seeds = [PEER_SEED, store.key().as_ref(), &source_eid.to_be_bytes()],
-        bump = peer.bump
-    )]
-    pub peer: Account<'info, PeerConfig>,
-    #[account(
-        seeds = [RECEIVER_SEED, target.as_ref()],
-        bump = receiver.bump,
-        constraint = receiver.target == target
-    )]
-    pub receiver: Account<'info, ReceiverConfig>,
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + ReceivedMessage::INIT_SPACE,
-        seeds = [MESSAGE_SEED, &message_id],
-        bump
-    )]
-    pub message: Account<'info, ReceivedMessage>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
-#[instruction(source_eid: u32, target: Pubkey, message_id: [u8; 32])]
-pub struct LzReceiveDirect<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-    #[account(seeds = [STORE_SEED], bump = store.bump)]
-    pub store: Account<'info, Store>,
-    #[account(
-        seeds = [PEER_SEED, store.key().as_ref(), &source_eid.to_be_bytes()],
-        bump = peer.bump
-    )]
-    pub peer: Account<'info, PeerConfig>,
-    #[account(
-        seeds = [RECEIVER_SEED, target.as_ref()],
-        bump = receiver.bump,
-        constraint = receiver.target == target
-    )]
-    pub receiver: Account<'info, ReceiverConfig>,
-    #[account(
-        init,
-        payer = payer,
-        space = 8 + MessageStatus::INIT_SPACE,
-        seeds = [MESSAGE_STATUS_SEED, &message_id],
-        bump
-    )]
-    pub status: Account<'info, MessageStatus>,
-    #[account(
-        init_if_needed,
-        payer = payer,
-        space = 8 + ReceiverState::INIT_SPACE,
-        seeds = [RECEIVER_STATE_SEED, target.as_ref()],
-        bump
-    )]
-    pub receiver_state: Account<'info, ReceiverState>,
-    pub system_program: Program<'info, System>,
-}
-
-#[derive(Accounts)]
 #[instruction(message_id: [u8; 32])]
 pub struct ClaimMessage<'info> {
     #[account(mut)]
@@ -879,14 +738,6 @@ pub struct ReceivedMessage {
 
 #[account]
 #[derive(InitSpace)]
-pub struct MessageStatus {
-    pub message_id: [u8; 32],
-    pub delivered: bool,
-    pub bump: u8,
-}
-
-#[account]
-#[derive(InitSpace)]
 pub struct ReceiverState {
     pub target: Pubkey,
     pub last_message_id: [u8; 32],
@@ -977,6 +828,10 @@ pub enum BridgeEndpointError {
     NonceOverflow,
     #[msg("The supplied LayerZero Endpoint account is invalid")]
     InvalidEndpointAccount,
+    #[msg("Only the program upgrade authority may initialize the bridge")]
+    UnauthorizedInitializer,
+    #[msg("The target must be a right-aligned 20-byte GenLayer address")]
+    InvalidGenLayerTarget,
 }
 
 fn outbound_message_id(
@@ -1005,33 +860,6 @@ fn validate_endpoint_account(endpoint_program: Pubkey, endpoint: Pubkey) -> Resu
         BridgeEndpointError::InvalidEndpointAccount
     );
     Ok(())
-}
-
-fn validate_inbound(
-    source_eid: u32,
-    target: Pubkey,
-    message_id: [u8; 32],
-    encoded_message: &[u8],
-    peer: &PeerConfig,
-) -> Result<msg_codec::BridgeMessage> {
-    let decoded = decode_bridge_envelope(encoded_message)?;
-    require!(
-        decoded.source_eid == source_eid,
-        BridgeEndpointError::SourceEidMismatch
-    );
-    require!(
-        decoded.message_id == message_id,
-        BridgeEndpointError::MessageIdMismatch
-    );
-    require!(
-        Pubkey::new_from_array(decoded.target) == target,
-        BridgeEndpointError::TargetMismatch
-    );
-    require!(
-        decoded.source_sender == peer.peer_address && decoded.source_eid == peer.source_eid,
-        BridgeEndpointError::UntrustedPeer
-    );
-    Ok(decoded)
 }
 
 fn validate_layerzero_inbound(
@@ -1086,23 +914,28 @@ fn ensure_pda_account<'info>(
     }
 
     require!(
-        account.data_is_empty(),
+        account.owner == &anchor_lang::system_program::ID && account.data_is_empty(),
         BridgeEndpointError::InvalidPdaAccount
     );
 
-    let rent = Rent::get()?;
-    let lamports = rent.minimum_balance(space);
-    let create_account = system_instruction::create_account(
-        payer.key,
-        account.key,
-        lamports,
-        space as u64,
-        program_id,
-    );
-
+    let lamports = Rent::get()?
+        .minimum_balance(space)
+        .saturating_sub(account.lamports());
+    if lamports > 0 {
+        invoke_signed(
+            &system_instruction::transfer(payer.key, account.key, lamports),
+            &[payer.clone(), account.clone(), system_program.clone()],
+            &[],
+        )?;
+    }
     invoke_signed(
-        &create_account,
-        &[payer.clone(), account.clone(), system_program.clone()],
+        &system_instruction::allocate(account.key, space as u64),
+        &[account.clone(), system_program.clone()],
+        &[signer_seeds],
+    )?;
+    invoke_signed(
+        &system_instruction::assign(account.key, program_id),
+        &[account.clone(), system_program.clone()],
         &[signer_seeds],
     )?;
 
