@@ -1,7 +1,7 @@
 # v0.2.0
 # { "Depends": "py-genlayer:1j12s63yfjpva9ik2xgnffgrs6v44y1f52jvj9w7xvdn7qckd379" }
 
-"""StringReceiverIC: Receives strings from EVM via BridgeReceiver emit()."""
+"""StringReceiverIC: Receives strings from EVM via GenLayerInbox emit()."""
 
 from genlayer import *
 
@@ -26,7 +26,7 @@ class StringReceiverIC(gl.Contract):
         self, message_id: str, source_chain_id: int, source_sender: str, message: bytes
     ):
         if gl.message.sender_address != self.bridge_receiver:
-            raise ValueError("Only BridgeReceiver")
+            raise ValueError("Only GenLayerInbox")
 
         string_message = gl.evm.decode(str, message)
         self.received_strings.append(string_message)

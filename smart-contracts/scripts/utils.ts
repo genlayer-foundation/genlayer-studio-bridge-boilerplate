@@ -67,6 +67,22 @@ export function addressToBytes32(address: string): string {
   return ethers.zeroPadValue(address, 32);
 }
 
+/**
+ * Convert either an EVM address or native 32 byte peer identity to bytes32.
+ * Solana OApp Store PDAs should be supplied as 0x-prefixed 32 byte values.
+ */
+export function peerToBytes32(peer: string): string {
+  if (ethers.isAddress(peer)) {
+    return addressToBytes32(peer);
+  }
+
+  if (/^0x[0-9a-fA-F]{64}$/.test(peer)) {
+    return peer;
+  }
+
+  throw new Error(`Invalid peer identity: ${peer}. Expected EVM address or 0x-prefixed bytes32.`);
+}
+
 // ============================================================================
 // Network Setup
 // ============================================================================

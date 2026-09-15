@@ -5,7 +5,9 @@ dotenv.config();
 interface Config {
   // GenLayer -> EVM direction
   bridgeSenderAddress?: string;
+  genLayerOutboxAddress?: string;
   bridgeForwarderAddress?: string;
+  hubOutboundRouterAddress?: string;
   campaignFactoryAddress?: string;
   forwarderNetworkRpcUrl?: string;
   genlayerRpcUrl?: string;
@@ -13,7 +15,9 @@ interface Config {
   bridgeSyncInterval?: string;
   // EVM -> GenLayer direction
   bridgeReceiverIcAddress?: string;
+  genLayerInboxAddress?: string;
   zkSyncBridgeReceiverAddress?: string;
+  hubInboundInboxAddress?: string;
   zkSyncRpcUrl?: string;
   evmToGlSyncInterval?: string;
 }
@@ -21,7 +25,9 @@ interface Config {
 function loadConfig(): Config {
   const {
     // GenLayer -> EVM
+    GENLAYER_OUTBOX_ADDRESS,
     BRIDGE_FORWARDER_ADDRESS,
+    HUB_OUTBOUND_ROUTER_ADDRESS,
     BRIDGE_SENDER_ADDRESS,
     FORWARDER_NETWORK_RPC_URL,
     GENLAYER_RPC_URL,
@@ -29,7 +35,9 @@ function loadConfig(): Config {
     BRIDGE_SYNC_INTERVAL = '*/5 * * * *', // Default to every 5 minutes
     // EVM -> GenLayer
     BRIDGE_RECEIVER_IC_ADDRESS,
+    GENLAYER_INBOX_ADDRESS,
     ZKSYNC_BRIDGE_RECEIVER_ADDRESS,
+    HUB_INBOUND_INBOX_ADDRESS,
     ZKSYNC_RPC_URL,
     EVM_TO_GL_SYNC_INTERVAL = '*/1 * * * *', // Default to every 1 minute
   } = process.env;
@@ -38,14 +46,18 @@ function loadConfig(): Config {
     return {
       // GenLayer -> EVM
       bridgeSenderAddress: BRIDGE_SENDER_ADDRESS,
+      genLayerOutboxAddress: GENLAYER_OUTBOX_ADDRESS,
       bridgeForwarderAddress: BRIDGE_FORWARDER_ADDRESS,
+      hubOutboundRouterAddress: HUB_OUTBOUND_ROUTER_ADDRESS,
       forwarderNetworkRpcUrl: FORWARDER_NETWORK_RPC_URL,
       genlayerRpcUrl: GENLAYER_RPC_URL,
       privateKey: PRIVATE_KEY,
       bridgeSyncInterval: BRIDGE_SYNC_INTERVAL,
       // EVM -> GenLayer
       bridgeReceiverIcAddress: BRIDGE_RECEIVER_IC_ADDRESS,
+      genLayerInboxAddress: GENLAYER_INBOX_ADDRESS,
       zkSyncBridgeReceiverAddress: ZKSYNC_BRIDGE_RECEIVER_ADDRESS,
+      hubInboundInboxAddress: HUB_INBOUND_INBOX_ADDRESS,
       zkSyncRpcUrl: ZKSYNC_RPC_URL,
       evmToGlSyncInterval: EVM_TO_GL_SYNC_INTERVAL,
     };
@@ -68,11 +80,21 @@ export function getRequiredConfig(key: keyof Config, envKey: string): string {
 
 // Export specific getters for each required address
 export function getBridgeSenderAddress(): string {
-  return getRequiredConfig('bridgeSenderAddress', 'BRIDGE_SENDER_ADDRESS');
+  return getOptionalConfig('genLayerOutboxAddress', 'GENLAYER_OUTBOX_ADDRESS')
+    || getRequiredConfig('bridgeSenderAddress', 'BRIDGE_SENDER_ADDRESS');
+}
+
+export function getGenLayerOutboxAddress(): string {
+  return getBridgeSenderAddress();
 }
 
 export function getBridgeForwarderAddress(): string {
-  return getRequiredConfig('bridgeForwarderAddress', 'BRIDGE_FORWARDER_ADDRESS');
+  return getOptionalConfig('hubOutboundRouterAddress', 'HUB_OUTBOUND_ROUTER_ADDRESS')
+    || getRequiredConfig('bridgeForwarderAddress', 'BRIDGE_FORWARDER_ADDRESS');
+}
+
+export function getHubOutboundRouterAddress(): string {
+  return getBridgeForwarderAddress();
 }
 
 export function getForwarderNetworkRpcUrl(): string {
@@ -93,11 +115,21 @@ export function getBridgeSyncInterval(): string {
 
 // EVM -> GenLayer getters
 export function getBridgeReceiverIcAddress(): string {
-  return getRequiredConfig('bridgeReceiverIcAddress', 'BRIDGE_RECEIVER_IC_ADDRESS');
+  return getOptionalConfig('genLayerInboxAddress', 'GENLAYER_INBOX_ADDRESS')
+    || getRequiredConfig('bridgeReceiverIcAddress', 'BRIDGE_RECEIVER_IC_ADDRESS');
+}
+
+export function getGenLayerInboxAddress(): string {
+  return getBridgeReceiverIcAddress();
 }
 
 export function getZkSyncBridgeReceiverAddress(): string {
-  return getRequiredConfig('zkSyncBridgeReceiverAddress', 'ZKSYNC_BRIDGE_RECEIVER_ADDRESS');
+  return getOptionalConfig('hubInboundInboxAddress', 'HUB_INBOUND_INBOX_ADDRESS')
+    || getRequiredConfig('zkSyncBridgeReceiverAddress', 'ZKSYNC_BRIDGE_RECEIVER_ADDRESS');
+}
+
+export function getHubInboundInboxAddress(): string {
+  return getZkSyncBridgeReceiverAddress();
 }
 
 export function getZkSyncRpcUrl(): string {
@@ -116,8 +148,12 @@ export function getOptionalConfig(key: keyof Config, envKey: string): string | u
 
 // Check if EVM->GL bridging is enabled
 export function isEvmToGlBridgingEnabled(): boolean {
-  const bridgeReceiverIc = getOptionalConfig('bridgeReceiverIcAddress', 'BRIDGE_RECEIVER_IC_ADDRESS');
-  const zkSyncReceiver = getOptionalConfig('zkSyncBridgeReceiverAddress', 'ZKSYNC_BRIDGE_RECEIVER_ADDRESS');
+  const bridgeReceiverIc =
+    getOptionalConfig('genLayerInboxAddress', 'GENLAYER_INBOX_ADDRESS')
+    || getOptionalConfig('bridgeReceiverIcAddress', 'BRIDGE_RECEIVER_IC_ADDRESS');
+  const zkSyncReceiver =
+    getOptionalConfig('hubInboundInboxAddress', 'HUB_INBOUND_INBOX_ADDRESS')
+    || getOptionalConfig('zkSyncBridgeReceiverAddress', 'ZKSYNC_BRIDGE_RECEIVER_ADDRESS');
   const zkSyncRpc = getOptionalConfig('zkSyncRpcUrl', 'ZKSYNC_RPC_URL');
   return !!(bridgeReceiverIc && zkSyncReceiver && zkSyncRpc);
 }

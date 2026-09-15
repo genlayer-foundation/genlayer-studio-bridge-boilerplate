@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 /**
  * @title IBridgeSender
- * @notice Interface for the BridgeSender contract that sends messages to GenLayer
+ * @notice Interface for EvmChainOutbox-compatible contracts that send messages to GenLayer
  */
 interface IBridgeSender {
     /**

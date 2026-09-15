@@ -10,7 +10,7 @@ contract StringReceiver is IGenLayerBridgeReceiver {
     address public bridgeReceiver;
     address public owner;
 
-    event StringReceived(uint32 indexed sourceChainId, address indexed sourceContract, string message, uint256 messageIndex);
+    event StringReceived(bytes32 indexed messageId, uint32 indexed sourceEid, bytes32 indexed sourceSender, string message, uint256 messageIndex);
     event BridgeReceiverUpdated(address indexed oldReceiver, address indexed newReceiver);
 
     error OnlyBridgeReceiver();
@@ -33,11 +33,16 @@ contract StringReceiver is IGenLayerBridgeReceiver {
         owner = msg.sender;
     }
 
-    function processBridgeMessage(uint32 _sourceChainId, address _sourceContract, bytes calldata _message) external onlyBridgeReceiver {
+    function processBridgeMessage(
+        bytes32 _messageId,
+        uint32 _sourceEid,
+        bytes32 _sourceSender,
+        bytes calldata _message
+    ) external onlyBridgeReceiver {
         string memory message = abi.decode(_message, (string));
         uint256 messageIndex = receivedMessages.length;
         receivedMessages.push(message);
-        emit StringReceived(_sourceChainId, _sourceContract, message, messageIndex);
+        emit StringReceived(_messageId, _sourceEid, _sourceSender, message, messageIndex);
     }
 
     function getMessageCount() external view returns (uint256) {
